@@ -1,0 +1,14 @@
+name: manual-configuration-guide
+title: Axon Framework Manual Configuration Guide
+version: true
+prerelease: true
+start_page: ROOT:index.adoc
+
+asciidoc:
+  attributes:
+    component_description: A guide that covers configuring Axon Framework applications manually using the configuration API (that is, in a non-spring-boot environment).
+    type: guide
+    group: axon-framework
+
+nav:
+  - modules/nav.adoc

@@ -1,0 +1,81 @@
+:navtitle: Manual Axon Framework Configuration
+= Manual Axon Framework Configuration
+
+While Axon Framework provides xref:axon_framework_ref:ROOT:spring-boot-integration.adoc[extensive support for Spring], there are also environments where you want to configure an Axon Framework Application using plain Java.
+
+Axon Framework provides a comprehensive configuration API to set up all components required for running an Axon Framework Application.
+
+== Basic Configuration API
+
+The root class of the configuration API is the `org.axonframework.config.Configurer` interface, which provides configuration capabilities for all major concerns of an Axon Framework Application.
+After configuring all relevant aspects, the configuration needs to be built, started and upon exiting your application shut down again to release resources.
+The general usage of the configuration API would be:
+
+[source,java]
+----
+import org.axonframework.commandhandling.gateway.CommandGateway;
+import org.axonframework.config.Configuration;
+import org.axonframework.config.Configurer;
+import org.axonframework.config.DefaultConfigurer;
+
+public class AxonFrameworkApplication{
+     public static void main(String[] args) {
+        // create a configurer
+        Configurer configurer = DefaultConfigurer.defaultConfiguration();
+
+        // configure different application aspects
+        // configurer.configureXXX(...)
+        // configurer.registerXXX(...)
+
+        // build the configuration
+        Configuration config = configurer.buildConfiguration();
+
+        // access configured components for later use from the configuration (e.g. the command gateway for publishing commands)
+        CommandGateway commandGateway = config.commandGateway();
+
+        // start the configuration (to start command, event handling)
+        config.start();
+
+        // your application logic, including sending commands etc.
+
+        // shut down the configuration before exiting the application
+        config.shutdown();
+    }
+}
+----
+
+== Areas / Components to consider for configuration
+
+For a basic Axon Framework application you would need to configure the following aspects, which will be covered in the following sections:
+
+* Axon Server Connection
+* Message Serialization (Serializer, Converter, Revision Resolver)
+* Transaction Management
+* Event Store
+* Aggregate Configuration
+* Saga Configuration
+* Command Distribution (Command Bus)
+* Event Handling (Token Store, Event Handlers)
+* Query Handling
+
+== Connecting to Axon Server
+
+== Message Serialization
+
+== Transaction Management
+
+== Event Store
+
+== Aggregate Configuration
+
+== Saga Configuration
+
+== Command Distribution (Command Bus)
+
+== Event Handling (Token Store, Event Handlers)
+
+== Query Handling
+
+
+
+
