@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019-2022. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,58 +16,45 @@
 
 package org.axonframework.messaging.responsetypes;
 
+import jakarta.annotation.Nonnull;
+import jakarta.annotation.Nullable;
 import org.axonframework.messaging.IllegalPayloadAccessException;
-import org.axonframework.messaging.MetaData;
+import org.axonframework.messaging.MessageType;
+import org.axonframework.messaging.Metadata;
 import org.axonframework.queryhandling.QueryResponseMessage;
-import org.axonframework.serialization.SerializedObject;
-import org.axonframework.serialization.Serializer;
+import org.axonframework.serialization.Converter;
 
+import java.lang.reflect.Type;
 import java.util.Map;
 import java.util.Optional;
-import javax.annotation.Nonnull;
 
 /**
- * Implementation of a QueryResponseMessage that is aware of the requested response type and performs a just-in-time
- * conversion to ensure the response is formatted as requested.
+ * Implementation of a {@link QueryResponseMessage} that is aware of the requested response type and performs a
+ * just-in-time conversion to ensure the response is formatted as requested.
  * <p>
  * The conversion is generally used to accommodate response types that aren't compatible with serialization, such as
  * {@link OptionalResponseType}.
  *
- * @param <R> the type of response expected
+ * @param <R> The type of {@link #payload() payload} contained in this {@link QueryResponseMessage}.
  * @author Allard Buijze
- * @since 4.3
+ * @since 4.3.0
  */
-public class ConvertingResponseMessage<R> implements QueryResponseMessage<R> {
+public class ConvertingResponseMessage<R> implements QueryResponseMessage {
 
     private final ResponseType<R> expectedResponseType;
-    private final QueryResponseMessage<?> responseMessage;
+    private final QueryResponseMessage responseMessage;
 
     /**
-     * Initialize a response message, using {@code expectedResponseType} to convert the payload from the {@code
-     * responseMessage}, if necessary.
+     * Initialize a response message, using {@code expectedResponseType} to convert the payload from the
+     * {@code responseMessage}, if necessary.
      *
-     * @param expectedResponseType an instance describing the expected response type
-     * @param responseMessage      the message containing the actual response from the handler
+     * @param expectedResponseType An instance describing the expected response type.
+     * @param responseMessage      The message containing the actual response from the handler.
      */
     public ConvertingResponseMessage(ResponseType<R> expectedResponseType,
-                                     QueryResponseMessage<?> responseMessage) {
+                                     QueryResponseMessage responseMessage) {
         this.expectedResponseType = expectedResponseType;
         this.responseMessage = responseMessage;
-    }
-
-    @Override
-    public <S> SerializedObject<S> serializePayload(Serializer serializer, Class<S> expectedRepresentation) {
-        return responseMessage.serializePayload(serializer, expectedRepresentation);
-    }
-
-    @Override
-    public <T> SerializedObject<T> serializeExceptionResult(Serializer serializer, Class<T> expectedRepresentation) {
-        return responseMessage.serializeExceptionResult(serializer, expectedRepresentation);
-    }
-
-    @Override
-    public <R1> SerializedObject<R1> serializeMetaData(Serializer serializer, Class<R1> expectedRepresentation) {
-        return responseMessage.serializeMetaData(serializer, expectedRepresentation);
     }
 
     @Override
@@ -81,17 +68,26 @@ public class ConvertingResponseMessage<R> implements QueryResponseMessage<R> {
     }
 
     @Override
-    public String getIdentifier() {
-        return responseMessage.getIdentifier();
+    @Nonnull
+    public String identifier() {
+        return responseMessage.identifier();
     }
 
     @Override
-    public MetaData getMetaData() {
-        return responseMessage.getMetaData();
+    @Nonnull
+    public MessageType type() {
+        return responseMessage.type();
     }
 
     @Override
-    public R getPayload() {
+    @Nonnull
+    public Metadata metadata() {
+        return responseMessage.metadata();
+    }
+
+    @Override
+    @Nullable
+    public R payload() {
         if (isExceptional()) {
             throw new IllegalPayloadAccessException(
                     "This result completed exceptionally, payload is not available. "
@@ -99,21 +95,43 @@ public class ConvertingResponseMessage<R> implements QueryResponseMessage<R> {
                     optionalExceptionResult().orElse(null)
             );
         }
-        return expectedResponseType.convert(responseMessage.getPayload());
+        return expectedResponseType.convert(responseMessage.payload());
     }
 
     @Override
-    public Class<R> getPayloadType() {
+    @Nullable
+    public <T> T payloadAs(@Nonnull Type type, @Nullable Converter converter) {
+        if (isExceptional()) {
+            throw new IllegalPayloadAccessException(
+                    "This result completed exceptionally, payload is not available. "
+                            + "Try calling 'exceptionResult' to see the cause of failure.",
+                    optionalExceptionResult().orElse(null)
+            );
+        }
+        return responseMessage.payloadAs(type, converter);
+    }
+
+    @Override
+    @Nonnull
+    public Class<R> payloadType() {
         return expectedResponseType.responseMessagePayloadType();
     }
 
     @Override
-    public QueryResponseMessage<R> withMetaData(@Nonnull Map<String, ?> metaData) {
-        return new ConvertingResponseMessage<>(expectedResponseType, responseMessage.withMetaData(metaData));
+    @Nonnull
+    public QueryResponseMessage withMetadata(@Nonnull Map<String, String> metadata) {
+        return new ConvertingResponseMessage<>(expectedResponseType, responseMessage.withMetadata(metadata));
     }
 
     @Override
-    public QueryResponseMessage<R> andMetaData(@Nonnull Map<String, ?> additionalMetaData) {
-        return new ConvertingResponseMessage<>(expectedResponseType, responseMessage.andMetaData(additionalMetaData));
+    @Nonnull
+    public QueryResponseMessage andMetadata(@Nonnull Map<String, String> additionalMetadata) {
+        return new ConvertingResponseMessage<>(expectedResponseType, responseMessage.andMetadata(additionalMetadata));
+    }
+
+    @Override
+    @Nonnull
+    public QueryResponseMessage withConvertedPayload(@Nonnull Type type, @Nonnull Converter converter) {
+        return responseMessage.withConvertedPayload(type, converter);
     }
 }

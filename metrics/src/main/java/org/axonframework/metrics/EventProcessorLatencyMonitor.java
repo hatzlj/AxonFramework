@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +20,8 @@ import com.codahale.metrics.Gauge;
 import com.codahale.metrics.Metric;
 import com.codahale.metrics.MetricSet;
 import org.axonframework.eventhandling.EventMessage;
-import org.axonframework.eventhandling.StreamingEventProcessor;
+import org.axonframework.eventhandling.processors.streaming.StreamingEventProcessor;
+import org.axonframework.eventhandling.processors.EventProcessor;
 import org.axonframework.monitoring.MessageMonitor;
 import org.axonframework.monitoring.NoOpMessageMonitorCallback;
 
@@ -29,14 +30,14 @@ import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
-import javax.annotation.Nonnull;
+import jakarta.annotation.Nonnull;
 
 /**
  * A {@link MessageMonitor} implementation dedicated to {@link EventMessage EventMessages}.
  * <p>
- * This monitor defines the latency between the {@link EventMessage#getTimestamp()} and the {@link Clock#instant()}.
+ * This monitor defines the latency between the {@link EventMessage#timestamp()} and the {@link Clock#instant()}.
  * Doing so, it depicts the latency from when an event was published compared to when an
- * {@link org.axonframework.eventhandling.EventProcessor} processes the event to clarify how far behind an
+ * {@link EventProcessor} processes the event to clarify how far behind an
  * {@code EventProcessor} is.
  * <p>
  * Do note that a replay (as triggered through {@link StreamingEventProcessor#resetTokens()}, for example) will cause
@@ -46,7 +47,7 @@ import javax.annotation.Nonnull;
  * @author Allard Buijze
  * @since 3.0
  */
-public class EventProcessorLatencyMonitor implements MessageMonitor<EventMessage<?>>, MetricSet {
+public class EventProcessorLatencyMonitor implements MessageMonitor<EventMessage>, MetricSet {
 
     private final Clock clock;
     private final AtomicLong processTime = new AtomicLong();
@@ -68,10 +69,10 @@ public class EventProcessorLatencyMonitor implements MessageMonitor<EventMessage
     }
 
     @Override
-    public MonitorCallback onMessageIngested(@Nonnull EventMessage<?> message) {
+    public MonitorCallback onMessageIngested(@Nonnull EventMessage message) {
         //noinspection ConstantConditions
         if (message != null) {
-            this.processTime.set(Duration.between(message.getTimestamp(), clock.instant()).toMillis());
+            this.processTime.set(Duration.between(message.timestamp(), clock.instant()).toMillis());
         }
         return NoOpMessageMonitorCallback.INSTANCE;
     }

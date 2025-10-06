@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2023. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,380 +16,147 @@
 
 package org.axonframework.commandhandling.distributed;
 
+import jakarta.annotation.Nonnull;
+import jakarta.annotation.Nullable;
 import org.axonframework.commandhandling.CommandBus;
-import org.axonframework.commandhandling.CommandBusSpanFactory;
-import org.axonframework.commandhandling.CommandCallback;
+import org.axonframework.commandhandling.CommandHandler;
 import org.axonframework.commandhandling.CommandMessage;
-import org.axonframework.commandhandling.DefaultCommandBusSpanFactory;
-import org.axonframework.commandhandling.MonitorAwareCallback;
-import org.axonframework.commandhandling.NoHandlerForCommandException;
-import org.axonframework.commandhandling.callbacks.LoggingCallback;
-import org.axonframework.commandhandling.distributed.commandfilter.CommandNameFilter;
-import org.axonframework.commandhandling.distributed.commandfilter.DenyAll;
-import org.axonframework.commandhandling.distributed.commandfilter.DenyCommandNameFilter;
-import org.axonframework.common.AxonConfigurationException;
-import org.axonframework.common.Registration;
-import org.axonframework.lifecycle.Lifecycle;
-import org.axonframework.lifecycle.Phase;
-import org.axonframework.messaging.Distributed;
-import org.axonframework.messaging.MessageDispatchInterceptor;
-import org.axonframework.messaging.MessageHandler;
-import org.axonframework.messaging.MessageHandlerInterceptor;
-import org.axonframework.monitoring.MessageMonitor;
-import org.axonframework.monitoring.NoOpMessageMonitor;
-import org.axonframework.tracing.NoOpSpanFactory;
-import org.axonframework.tracing.Span;
-import org.axonframework.tracing.SpanFactory;
-import org.axonframework.tracing.SpanScope;
+import org.axonframework.commandhandling.CommandResultMessage;
+import org.axonframework.common.infra.ComponentDescriptor;
+import org.axonframework.messaging.QualifiedName;
+import org.axonframework.messaging.unitofwork.ProcessingContext;
+import org.axonframework.util.PriorityRunnable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.lang.invoke.MethodHandles;
-import java.util.List;
-import java.util.Optional;
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.atomic.AtomicReference;
-import javax.annotation.Nonnull;
-
-import static java.lang.String.format;
-import static org.axonframework.commandhandling.GenericCommandResultMessage.asCommandResultMessage;
-import static org.axonframework.common.BuilderUtils.assertNonNull;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.PriorityBlockingQueue;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Implementation of a {@link CommandBus} that is aware of multiple instances of a CommandBus working together to spread
- * load. Each "physical" CommandBus instance is considered a "segment" of a conceptual distributed CommandBus.
- * <p/>
- * The DistributedCommandBus relies on a {@link CommandBusConnector} to dispatch commands and replies to different
- * segments of the CommandBus. Depending on the implementation used, each segment may run in a different JVM.
+ * Implementation of a {@code CommandBus} that is aware of multiple instances of a {@code CommandBus} working together
+ * to spread load.
+ * <p>
+ * Each "physical" {@code CommandBus} instance is considered a "segment" of a conceptual distributed
+ * {@code CommandBus}.
+ * <p>
+ * The {@code DistributedCommandBus} relies on a {@link CommandBusConnector} to dispatch commands and replies to
+ * different segments of the {@code CommandBus}. Depending on the implementation used, each segment may run in a
+ * different JVM.
  *
  * @author Allard Buijze
- * @since 2.0
+ * @since 2.0.0
  */
-public class DistributedCommandBus implements CommandBus, Distributed<CommandBus>, Lifecycle {
+public class DistributedCommandBus implements CommandBus {
 
-    private static final Logger logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
+    private static final Logger logger = LoggerFactory.getLogger(DistributedCommandBus.class);
 
-    /**
-     * The initial load factor of this node when it is registered with the {@link CommandRouter}.
-     */
-    public static final int INITIAL_LOAD_FACTOR = 100;
-
-    private static final String DISPATCH_ERROR_MESSAGE = "An error occurred while trying to dispatch a command "
-            + "on the DistributedCommandBus";
-
-    private final CommandRouter commandRouter;
+    private final CommandBus delegate;
     private final CommandBusConnector connector;
-    private final MessageMonitor<? super CommandMessage<?>> messageMonitor;
+    private final ExecutorService executorService;
 
-    private final List<MessageDispatchInterceptor<? super CommandMessage<?>>> dispatchInterceptors = new CopyOnWriteArrayList<>();
-    private final AtomicReference<CommandMessageFilter> commandFilter = new AtomicReference<>(DenyAll.INSTANCE);
-    private final CommandCallback<Object, Object> defaultCommandCallback;
-    private final CommandBusSpanFactory spanFactory;
-
-    private volatile int loadFactor = INITIAL_LOAD_FACTOR;
+    // TODO #3074 Refactor to a loadFactor per CommandType.
+    private final int loadFactor;
 
     /**
-     * Instantiate a Builder to be able to create a {@link DistributedCommandBus}.
-     * <p>
-     * The {@link CommandCallback} is defaulted to a {@link LoggingCallback}. The {@link MessageMonitor} is defaulted to
-     * a {@link NoOpMessageMonitor}. The {@link CommandBusSpanFactory} is defaulted to a {@link DefaultCommandBusSpanFactory}
-     * backed by a {@link NoOpSpanFactory}. The {@link CommandRouter} and {@link CommandBusConnector} are <b>hard
-     * requirements</b> and as such should be provided.
+     * Constructs a {@code DistributedCommandBus} using the given {@code delegate} for
+     * {@link #subscribe(QualifiedName, CommandHandler) subscribing} handlers and the given {@code connector} to
+     * dispatch commands and replies to different segments of the {@code CommandBus}.
      *
-     * @return a Builder to be able to create a {@link DistributedCommandBus}
+     * @param delegate      The delegate {@code CommandBus} used to subscribe handlers to.
+     * @param connector     The {@code Connector} to dispatch commands or replies.
+     * @param configuration The {@code DistributedCommandBusConfiguration} containing the load factor and the
+     *                      {@code ExecutorServiceFactory} for this bus.
      */
-    public static Builder builder() {
-        return new Builder();
-    }
-
-    /**
-     * Instantiate a {@link DistributedCommandBus} based on the fields contained in the {@link Builder}.
-     * <p>
-     * Will assert that the {@link CommandRouter}, {@link CommandBusConnector} and {@link MessageMonitor} are not
-     * {@code null}, and will throw an {@link AxonConfigurationException} if any of them is {@code null}.
-     *
-     * @param builder the {@link Builder} used to instantiate a {@link DistributedCommandBus} instance
-     */
-    protected DistributedCommandBus(Builder builder) {
-        builder.validate();
-        this.commandRouter = builder.commandRouter;
-        this.connector = builder.connector;
-        this.messageMonitor = builder.messageMonitor;
-        this.defaultCommandCallback = builder.defaultCommandCallback;
-        this.spanFactory = builder.spanFactory;
-    }
-
-    /**
-     * Disconnect the command bus for receiving new commands, by unsubscribing all registered command handlers. This
-     * shutdown operation is performed in the {@link Phase#INBOUND_COMMAND_CONNECTOR} phase.
-     */
-    public void disconnect() {
-        commandRouter.updateMembership(loadFactor, DenyAll.INSTANCE);
-    }
-
-    /**
-     * Shutdown the command bus asynchronously for dispatching commands to other instances. This process will wait for
-     * dispatched commands which have not received a response yet. This shutdown operation is performed in the
-     * {@link Phase#OUTBOUND_COMMAND_CONNECTORS} phase.
-     *
-     * @return a completable future which is resolved once all command dispatching activities are completed
-     */
-    public CompletableFuture<Void> shutdownDispatching() {
-        return connector.initiateShutdown();
+    public DistributedCommandBus(@Nonnull CommandBus delegate,
+                                 @Nonnull CommandBusConnector connector,
+                                 @Nonnull DistributedCommandBusConfiguration configuration) {
+        this.delegate = Objects.requireNonNull(delegate, "The given CommandBus delegate cannot be null.");
+        this.connector = Objects.requireNonNull(connector, "The given Connector cannot be null.");
+        this.loadFactor = configuration.loadFactor();
+        this.executorService = configuration.executorServiceFactory()
+                                            .createExecutorService(configuration, new PriorityBlockingQueue<>(1000));
+        connector.onIncomingCommand(new DistributedHandler());
     }
 
     @Override
-    public void registerLifecycleHandlers(@Nonnull LifecycleRegistry handle) {
-        handle.onShutdown(Phase.INBOUND_COMMAND_CONNECTOR, this::disconnect);
-        handle.onShutdown(Phase.OUTBOUND_COMMAND_CONNECTORS, this::shutdownDispatching);
+    public DistributedCommandBus subscribe(@Nonnull QualifiedName name,
+                                           @Nonnull CommandHandler handler) {
+        CommandHandler commandHandler = Objects.requireNonNull(handler, "The given handler cannot be null.");
+        delegate.subscribe(name, commandHandler);
+        connector.subscribe(name, loadFactor);
+        return this;
     }
 
     @Override
-    public <C> void dispatch(@Nonnull CommandMessage<C> command) {
-        logger.debug("Dispatch command [{}] with callback", command.getCommandName());
-        dispatch(command, defaultCommandCallback);
+    public CompletableFuture<CommandResultMessage> dispatch(@Nonnull CommandMessage command,
+                                                            @Nullable ProcessingContext processingContext) {
+        return connector.dispatch(command, processingContext);
     }
 
-    /**
-     * {@inheritDoc}
-     *
-     * @throws CommandDispatchException when an error occurs while dispatching the command to a segment
-     */
     @Override
-    public <C, R> void dispatch(@Nonnull CommandMessage<C> command,
-                                @Nonnull CommandCallback<? super C, ? super R> callback) {
-        CommandMessage<? extends C> interceptedCommand = intercept(command);
-        MessageMonitor.MonitorCallback messageMonitorCallback = messageMonitor.onMessageIngested(interceptedCommand);
-        Optional<Member> optionalDestination = commandRouter.findDestination(interceptedCommand);
-        Span span = spanFactory.createDispatchCommandSpan(command, true).start();
-        try (SpanScope ignored = span.makeCurrent()) {
-            if (optionalDestination.isPresent()) {
-                Member destination = optionalDestination.get();
+    public void describeTo(@Nonnull ComponentDescriptor descriptor) {
+        descriptor.describeWrapperOf(delegate);
+        descriptor.describeProperty("connector", connector);
+    }
 
-                connector.send(destination,
-                               spanFactory.propagateContext(interceptedCommand),
-                               new MonitorAwareCallback<>(callback, messageMonitorCallback));
-            } else {
-                throw new NoHandlerForCommandException(
-                        format("No node known to accept command [%s].", interceptedCommand.getCommandName())
+    private class DistributedHandler implements CommandBusConnector.Handler {
+
+        private static final AtomicLong TASK_SEQUENCE = new AtomicLong(Long.MIN_VALUE);
+
+        @Override
+        public void handle(@Nonnull CommandMessage commandMessage,
+                           @Nonnull CommandBusConnector.ResultCallback callback) {
+            int priority = commandMessage.priority().orElse(0);
+            if (logger.isDebugEnabled()) {
+                logger.debug("Received command [{}] for processing with priority [{}] and routing key [{}]",
+                             commandMessage.type(),
+                             commandMessage.priority().orElse(0),
+                             commandMessage.routingKey().orElse(null)
                 );
             }
-        } catch (Exception e) {
-            span.recordException(e);
-            messageMonitorCallback.reportFailure(e);
-            optionalDestination.ifPresent(Member::suspect);
-            if (e instanceof NoHandlerForCommandException) {
-                callback.onResult(interceptedCommand, asCommandResultMessage(e));
-            } else {
-                callback.onResult(interceptedCommand, asCommandResultMessage(
-                        new CommandDispatchException(DISPATCH_ERROR_MESSAGE + ": " + e.getMessage(), e)
-                ));
+            long sequence = TASK_SEQUENCE.incrementAndGet();
+            executorService.execute(new PriorityRunnable(
+                    () -> doHandleCommand(commandMessage, callback), priority, sequence
+            ));
+        }
+
+        private void doHandleCommand(CommandMessage commandMessage,
+                                     CommandBusConnector.ResultCallback callback) {
+            if (logger.isDebugEnabled()) {
+                logger.debug("Processing incoming command [{}] with priority [{}] and routing key [{}]",
+                             commandMessage.type(),
+                             commandMessage.priority().orElse(0),
+                             commandMessage.routingKey().orElse(null));
             }
-        } finally {
-            span.end();
-        }
-    }
 
-    @SuppressWarnings("unchecked")
-    private <C> CommandMessage<? extends C> intercept(CommandMessage<C> command) {
-        CommandMessage<? extends C> interceptedCommand = command;
-        for (MessageDispatchInterceptor<? super CommandMessage<?>> interceptor : dispatchInterceptors) {
-            interceptedCommand = (CommandMessage<? extends C>) interceptor.handle(interceptedCommand);
-        }
-        return interceptedCommand;
-    }
-
-    /**
-     * {@inheritDoc}
-     * <p/>
-     * In the DistributedCommandBus, the handler is subscribed to the local segment only.
-     */
-    @Override
-    public Registration subscribe(@Nonnull String commandName,
-                                  @Nonnull MessageHandler<? super CommandMessage<?>> handler) {
-        logger.debug("Subscribing command with name [{}] to this distributed CommandBus. Expect similar logging on the local segment.", commandName);
-        Registration reg = connector.subscribe(commandName, handler);
-        updateFilter(commandFilter.get().or(new CommandNameFilter(commandName)));
-
-        return () -> {
-            updateFilter(commandFilter.get().and(new DenyCommandNameFilter(commandName)));
-            return reg.cancel();
-        };
-    }
-
-    private void updateFilter(CommandMessageFilter newFilter) {
-        if (!commandFilter.getAndSet(newFilter).equals(newFilter)) {
-            commandRouter.updateMembership(loadFactor, newFilter);
-        }
-    }
-
-    /**
-     * {@inheritDoc}
-     * <p>
-     * Will call {@link CommandBusConnector#localSegment()}. If this returns an {@link Optional#empty()}, this method
-     * defaults to returning {@code this} as last resort.
-     */
-    @Override
-    public CommandBus localSegment() {
-        return connector.localSegment().orElse(this);
-    }
-
-    /**
-     * Returns the current load factor of this node.
-     *
-     * @return the current load factor
-     */
-    public int getLoadFactor() {
-        return loadFactor;
-    }
-
-    /**
-     * Updates the load factor of this node compared to other nodes registered with the {@link CommandRouter}.
-     *
-     * @param loadFactor the new load factor of this node
-     */
-    public void updateLoadFactor(int loadFactor) {
-        this.loadFactor = loadFactor;
-        commandRouter.updateMembership(loadFactor, commandFilter.get());
-    }
-
-    /**
-     * Registers the given list of dispatch interceptors to the command bus. All incoming commands will pass through the
-     * interceptors at the given order before the command is dispatched toward the command handler.
-     *
-     * @param dispatchInterceptor The interceptors to invoke when commands are dispatched
-     * @return handle to deregister the interceptor
-     */
-    public Registration registerDispatchInterceptor(
-            @Nonnull MessageDispatchInterceptor<? super CommandMessage<?>> dispatchInterceptor) {
-        dispatchInterceptors.add(dispatchInterceptor);
-        return () -> dispatchInterceptors.remove(dispatchInterceptor);
-    }
-
-    @Override
-    public Registration registerHandlerInterceptor(
-            @Nonnull MessageHandlerInterceptor<? super CommandMessage<?>> handlerInterceptor) {
-        return connector.registerHandlerInterceptor(handlerInterceptor);
-    }
-
-    /**
-     * Builder class to instantiate a {@link DistributedCommandBus}.
-     * <p>
-     * The {@link CommandCallback} is defaulted to a {@link LoggingCallback}. The {@link MessageMonitor} is defaulted to
-     * a {@link NoOpMessageMonitor}. The {@link CommandBusSpanFactory} is defaulted to a
-     * {@link DefaultCommandBusSpanFactory} backed by a {@link NoOpSpanFactory}. The {@link CommandRouter} and
-     * {@link CommandBusConnector} are <b>hard requirements</b> and as such should be provided.
-     */
-    public static class Builder {
-
-        private CommandCallback<Object, Object> defaultCommandCallback = LoggingCallback.INSTANCE;
-        private CommandRouter commandRouter;
-        private CommandBusConnector connector;
-        private MessageMonitor<? super CommandMessage<?>> messageMonitor = NoOpMessageMonitor.INSTANCE;
-        private CommandBusSpanFactory spanFactory = DefaultCommandBusSpanFactory
-                .builder().spanFactory(NoOpSpanFactory.INSTANCE).build();
-
-        /**
-         * Sets the {@link CommandRouter} used to determine the target node for each dispatched command.
-         *
-         * @param commandRouter a {@link CommandRouter} used to determine the target node for each dispatched command
-         * @return the current Builder instance, for fluent interfacing
-         */
-        public Builder commandRouter(CommandRouter commandRouter) {
-            assertNonNull(commandRouter, "CommandRouter may not be null");
-            this.commandRouter = commandRouter;
-            return this;
+            delegate.dispatch(commandMessage, null).whenComplete((resultMessage, e) -> {
+                try {
+                    if (e == null) {
+                        handleSuccess(commandMessage, callback, resultMessage);
+                    } else {
+                        handleError(commandMessage, callback, e);
+                    }
+                } catch (Throwable ex) {
+                    logger.error("Error handling response of command [{}]", commandMessage.type(), ex);
+                    handleError(commandMessage, callback, ex);
+                }
+            });
         }
 
-        /**
-         * Sets the {@link CommandBusConnector} which performs the actual transport of the message to the destination
-         * node.
-         *
-         * @param connector a {@link CommandBusConnector} which performs the actual transport of the message to the
-         *                  destination node
-         * @return the current Builder instance, for fluent interfacing
-         */
-        public Builder connector(CommandBusConnector connector) {
-            assertNonNull(connector, "CommandBusConnector may not be null");
-            this.connector = connector;
-            return this;
+        private void handleError(CommandMessage commandMessage, CommandBusConnector.ResultCallback callback,
+                                 Throwable e) {
+            logger.error("Error processing incoming command [{}]", commandMessage.type(), e);
+            callback.onError(e);
         }
 
-        /**
-         * Sets the {@link MessageMonitor} for generic types implementing {@link CommandMessage}, which is used to
-         * monitor incoming messages and their execution result.
-         *
-         * @param messageMonitor a {@link MessageMonitor} used to monitor incoming messages and their execution result
-         * @return the current Builder instance, for fluent interfacing
-         */
-        public Builder messageMonitor(MessageMonitor<? super CommandMessage<?>> messageMonitor) {
-            assertNonNull(messageMonitor, "MessageMonitor may not be null");
-            this.messageMonitor = messageMonitor;
-            return this;
-        }
-
-        /**
-         * Sets the callback to use when commands are dispatched in a "fire and forget" method, such as
-         * {@link #dispatch(CommandMessage)}. Defaults to using a logging callback, which requests the connectors to use
-         * a fire-and-forget strategy for dispatching event.
-         *
-         * @param defaultCommandCallback the callback to invoke when no explicit callback is provided for a command
-         * @return the current Builder instance, for fluent interfacing
-         */
-        public Builder defaultCommandCallback(CommandCallback<Object, Object> defaultCommandCallback) {
-            assertNonNull(defaultCommandCallback, "CommandCallback may not be null");
-            this.defaultCommandCallback = defaultCommandCallback;
-            return this;
-        }
-
-        /**
-         * Sets the {@link SpanFactory} implementation to use for providing tracing capabilities. Defaults to a
-         * {@link NoOpSpanFactory} by default, which provides no tracing capabilities.
-         *
-         * @param spanFactory The {@link SpanFactory} implementation
-         * @return The current Builder instance, for fluent interfacing.
-         * @deprecated Use {@link #spanFactory(CommandBusSpanFactory)} instead as it provides more configurability.
-         */
-        @Deprecated
-        public Builder spanFactory(@Nonnull SpanFactory spanFactory) {
-            assertNonNull(spanFactory, "SpanFactory may not be null");
-            this.spanFactory = DefaultCommandBusSpanFactory.builder().spanFactory(spanFactory).build();
-            return this;
-        }
-
-        /**
-         * Sets the {@link CommandBusSpanFactory} implementation to use for providing tracing capabilities. Defaults to
-         * a {@link DefaultCommandBusSpanFactory} backed by a {@link NoOpSpanFactory} by default, which provides no
-         * tracing capabilities.
-         *
-         * @param spanFactory The {@link CommandBusSpanFactory} implementation
-         * @return The current Builder instance, for fluent interfacing.
-         */
-        public Builder spanFactory(@Nonnull CommandBusSpanFactory spanFactory) {
-            assertNonNull(spanFactory, "SpanFactory may not be null");
-            this.spanFactory = spanFactory;
-            return this;
-        }
-
-        /**
-         * Initializes a {@link DistributedCommandBus} as specified through this Builder.
-         *
-         * @return a {@link DistributedCommandBus} as specified through this Builder
-         */
-        public DistributedCommandBus build() {
-            return new DistributedCommandBus(this);
-        }
-
-        /**
-         * Validate whether the fields contained in this Builder as set accordingly.
-         *
-         * @throws AxonConfigurationException if one field is asserted to be incorrect according to the Builder's
-         *                                    specifications
-         */
-        protected void validate() {
-            assertNonNull(commandRouter, "The CommandRouter is a hard requirement and should be provided");
-            assertNonNull(connector, "The CommandBusConnector is a hard requirement and should be provided");
+        private void handleSuccess(CommandMessage commandMessage,
+                                   CommandBusConnector.ResultCallback callback,
+                                   CommandResultMessage resultMessage) {
+            logger.debug("Successfully processed command [{}] with result [{}]", commandMessage.type(), resultMessage);
+            callback.onSuccess(resultMessage);
         }
     }
 }

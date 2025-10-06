@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,9 +17,9 @@
 package org.axonframework.axonserver.connector.util;
 
 
-import org.axonframework.axonserver.connector.PriorityCallable;
-import org.axonframework.axonserver.connector.PriorityRunnable;
-import org.axonframework.axonserver.connector.PriorityTask;
+import org.axonframework.util.PriorityCallable;
+import org.axonframework.util.PriorityRunnable;
+import org.axonframework.util.PriorityTask;
 
 import java.util.Collection;
 import java.util.List;
@@ -33,7 +33,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
-import javax.annotation.Nonnull;
+import jakarta.annotation.Nonnull;
 
 /**
  * This {@link ExecutorService} wraps an existing one, creating a {@link PriorityTask} for every {@link Runnable} that

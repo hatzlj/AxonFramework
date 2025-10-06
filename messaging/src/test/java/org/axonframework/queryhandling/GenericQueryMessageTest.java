@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2020. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,47 +16,48 @@
 
 package org.axonframework.queryhandling;
 
+import jakarta.annotation.Nonnull;
+import jakarta.annotation.Nullable;
+import org.axonframework.common.ObjectUtils;
 import org.axonframework.messaging.GenericMessage;
 import org.axonframework.messaging.Message;
+import org.axonframework.messaging.MessageTestSuite;
+import org.axonframework.messaging.MessageType;
+import org.axonframework.messaging.responsetypes.ResponseType;
 import org.axonframework.messaging.responsetypes.ResponseTypes;
-import org.junit.jupiter.api.*;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Test class validating behaviour of the {@link GenericQueryMessage}.
+ * Test class validating the {@link GenericQueryMessage}.
  *
  * @author Steven van Beelen
  */
-class GenericQueryMessageTest {
+class GenericQueryMessageTest extends MessageTestSuite<QueryMessage> {
 
-    @Test
-    void queryNameResemblesPayloadClassName() {
-        String testPayload = "payload";
+    private static final ResponseType<String> TEST_RESPONSE_TYPE = ResponseTypes.instanceOf(String.class);
 
-        String result = QueryMessage.queryName(testPayload);
-
-        assertEquals(String.class.getName(), result);
+    @Override
+    protected QueryMessage buildDefaultMessage() {
+        Message delegate =
+                new GenericMessage(TEST_IDENTIFIER, TEST_TYPE, TEST_PAYLOAD, TEST_PAYLOAD_TYPE, TEST_METADATA);
+        return new GenericQueryMessage(delegate, TEST_RESPONSE_TYPE);
     }
 
-    @Test
-    void queryNameResemblesMessagePayloadTypeClassName() {
-        String testPayload = "payload";
-        Message<?> testMessage = GenericMessage.asMessage(testPayload);
-
-        String result = QueryMessage.queryName(testMessage);
-
-        assertEquals(String.class.getName(), result);
+    @Override
+    protected <P> QueryMessage buildMessage(@Nullable P payload) {
+        return new GenericQueryMessage(new MessageType(ObjectUtils.nullSafeTypeOf(payload)),
+                                         payload,
+                                         TEST_RESPONSE_TYPE);
     }
 
-    @Test
-    void queryNameResemblesQueryMessageQueryName() {
-        String expectedQueryName = "myQueryName";
-        QueryMessage<String, String> testMessage =
-                new GenericQueryMessage<>("payload", expectedQueryName, ResponseTypes.instanceOf(String.class));
+    @Override
+    protected void validateDefaultMessage(@Nonnull QueryMessage result) {
+        assertThat(TEST_RESPONSE_TYPE).isEqualTo(result.responseType());
+    }
 
-        String result = QueryMessage.queryName(testMessage);
-
-        assertEquals(expectedQueryName, result);
+    @Override
+    protected void validateMessageSpecifics(@Nonnull QueryMessage actual, @Nonnull QueryMessage result) {
+        assertThat(actual.responseType()).isEqualTo(result.responseType());
     }
 }

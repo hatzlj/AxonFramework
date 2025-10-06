@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -34,8 +34,6 @@ import java.util.TreeSet;
  */
 public class JSR303ViolationException extends AxonNonTransientException {
 
-    private static final long serialVersionUID = -1585918243998401966L;
-
     private final Set<ConstraintViolation<Object>> violations;
 
     /**
@@ -67,7 +65,7 @@ public class JSR303ViolationException extends AxonNonTransientException {
      * </pre>
      *
      * @param violations set of violations that were detected when the exception was thrown
-     * @return a human readable string describing the violations
+     * @return a human-readable string describing the violations
      */
     @SuppressWarnings("DuplicatedCode")
     protected static String convert(Set<ConstraintViolation<Object>> violations) {

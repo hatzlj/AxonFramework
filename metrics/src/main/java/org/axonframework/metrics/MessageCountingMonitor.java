@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2023. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,7 +24,7 @@ import org.axonframework.monitoring.MessageMonitor;
 
 import java.util.HashMap;
 import java.util.Map;
-import javax.annotation.Nonnull;
+import jakarta.annotation.Nonnull;
 
 /**
  * Counts the number of ingested, successful, failed and processed messages
@@ -32,7 +32,7 @@ import javax.annotation.Nonnull;
  * @author Marijn van Zelst
  * @since 3.0
  */
-public class MessageCountingMonitor implements MessageMonitor<Message<?>>, MetricSet {
+public class MessageCountingMonitor implements MessageMonitor<Message>, MetricSet {
 
     private final Counter ingestedCounter = new Counter();
     private final Counter successCounter = new Counter();
@@ -41,7 +41,7 @@ public class MessageCountingMonitor implements MessageMonitor<Message<?>>, Metri
     private final Counter ignoredCounter = new Counter();
 
     @Override
-    public MonitorCallback onMessageIngested(@Nonnull Message<?> message) {
+    public MonitorCallback onMessageIngested(@Nonnull Message message) {
         ingestedCounter.inc();
         return new MessageMonitor.MonitorCallback() {
             @Override

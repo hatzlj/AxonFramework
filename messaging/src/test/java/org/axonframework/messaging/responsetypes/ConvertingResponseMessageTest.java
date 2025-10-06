@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2023. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,10 +17,11 @@
 package org.axonframework.messaging.responsetypes;
 
 import org.axonframework.messaging.IllegalPayloadAccessException;
-import org.axonframework.messaging.MetaData;
+import org.axonframework.messaging.MessageType;
+import org.axonframework.messaging.Metadata;
 import org.axonframework.queryhandling.GenericQueryResponseMessage;
 import org.axonframework.queryhandling.QueryResponseMessage;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.*;
 
 import java.util.List;
 
@@ -31,25 +32,30 @@ class ConvertingResponseMessageTest {
 
     @Test
     void payloadIsConvertedToExpectedType() {
-        QueryResponseMessage<?> msg = new GenericQueryResponseMessage<>(new String[]{"Some string result"})
-                .withMetaData(MetaData.with("test", "value"));
-        QueryResponseMessage<List<String>> wrapped = new ConvertingResponseMessage<>(
-                ResponseTypes.multipleInstancesOf(String.class),
-                msg);
+        QueryResponseMessage msg = new GenericQueryResponseMessage(
+                new MessageType("query"), new String[]{"Some string result"}
+        ).withMetadata(Metadata.with("test", "value"));
+        QueryResponseMessage wrapped =
+                new ConvertingResponseMessage<>(ResponseTypes.multipleInstancesOf(String.class), msg);
 
-        assertEquals(List.class, wrapped.getPayloadType());
-        assertEquals(singletonList("Some string result"), wrapped.getPayload());
-        assertEquals("value", wrapped.getMetaData().get("test"));
+        assertEquals(List.class, wrapped.payloadType());
+        assertEquals(singletonList("Some string result"), wrapped.payload());
+        assertEquals("value", wrapped.metadata().get("test"));
     }
 
     @Test
     void illegalAccessPayloadWhenResultIsExceptional() {
-        QueryResponseMessage<?> msg = GenericQueryResponseMessage.asResponseMessage(List.class, new RuntimeException());
-        QueryResponseMessage<List<String>> wrapped = new ConvertingResponseMessage<>(
-                ResponseTypes.multipleInstancesOf(String.class),
-                msg);
+        QueryResponseMessage msg = asResponseMessage(List.class, new RuntimeException());
+        QueryResponseMessage wrapped =
+                new ConvertingResponseMessage<>(ResponseTypes.multipleInstancesOf(String.class), msg);
 
-        assertEquals(List.class, wrapped.getPayloadType());
-        assertThrows(IllegalPayloadAccessException.class, wrapped::getPayload);
+        assertEquals(List.class, wrapped.payloadType());
+        assertThrows(IllegalPayloadAccessException.class, wrapped::payload);
+    }
+
+    private static <R> QueryResponseMessage asResponseMessage(Class<R> declaredType, Throwable exception) {
+        return new GenericQueryResponseMessage(new MessageType(exception.getClass()),
+                                                 exception,
+                                                 declaredType);
     }
 }

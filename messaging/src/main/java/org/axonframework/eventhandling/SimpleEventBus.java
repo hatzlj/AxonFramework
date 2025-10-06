@@ -17,11 +17,13 @@
 package org.axonframework.eventhandling;
 
 import org.axonframework.common.AxonConfigurationException;
+import org.axonframework.eventhandling.tracing.DefaultEventBusSpanFactory;
+import org.axonframework.eventhandling.tracing.EventBusSpanFactory;
 import org.axonframework.monitoring.MessageMonitor;
 import org.axonframework.monitoring.NoOpMessageMonitor;
 import org.axonframework.tracing.SpanFactory;
 
-import javax.annotation.Nonnull;
+import jakarta.annotation.Nonnull;
 
 /**
  * Implementation of the {@link EventBus} that dispatches events in the thread the publishes them.
@@ -62,14 +64,8 @@ public class SimpleEventBus extends AbstractEventBus {
     public static class Builder extends AbstractEventBus.Builder {
 
         @Override
-        public Builder messageMonitor(@Nonnull MessageMonitor<? super EventMessage<?>> messageMonitor) {
+        public Builder messageMonitor(@Nonnull MessageMonitor<? super EventMessage> messageMonitor) {
             super.messageMonitor(messageMonitor);
-            return this;
-        }
-
-        @Override
-        public Builder spanFactory(@Nonnull SpanFactory spanFactory) {
-            super.spanFactory(spanFactory);
             return this;
         }
 

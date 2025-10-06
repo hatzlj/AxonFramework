@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2023. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@ import io.opentelemetry.context.propagation.TextMapSetter;
 import org.axonframework.messaging.Message;
 
 import java.util.Map;
-import javax.annotation.Nonnull;
+import jakarta.annotation.Nonnull;
 
 /**
  * This {@link TextMapSetter} implementation is able to insert the current OpenTelemetry span context into a
@@ -28,7 +28,7 @@ import javax.annotation.Nonnull;
  * {@link Map}. It's the responsibility the implementing {@link OpenTelemetrySpanFactory} to mutate the message through
  * {@link OpenTelemetrySpanFactory#propagateContext(Message)}.
  * <p>
- * The trace becomes the message's parent span in its{@link org.axonframework.messaging.MetaData}.
+ * The trace becomes the message's parent span in its{@link org.axonframework.messaging.Metadata}.
  *
  * @author Mitchell Herrijgers
  * @since 4.6.0

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2018. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,44 +16,92 @@
 
 package org.axonframework.messaging.interceptors;
 
-import org.axonframework.messaging.InterceptorChain;
+import org.axonframework.messaging.GenericMessage;
 import org.axonframework.messaging.Message;
+import org.axonframework.messaging.MessageDispatchInterceptorChain;
+import org.axonframework.messaging.MessageHandlerInterceptorChain;
+import org.axonframework.messaging.MessageType;
 import org.axonframework.messaging.correlation.CorrelationDataProvider;
-import org.axonframework.messaging.unitofwork.UnitOfWork;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
+import org.axonframework.messaging.unitofwork.ProcessingContext;
+import org.axonframework.messaging.unitofwork.StubProcessingContext;
+import org.junit.jupiter.api.*;
+import org.mockito.*;
 
 import java.util.Arrays;
+import java.util.Map;
 
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.axonframework.messaging.interceptors.CorrelationDataInterceptor.CORRELATION_DATA;
+import static org.mockito.Mockito.*;
 
 /**
+ * Test class validating the {@link CorrelationDataInterceptor}.
+ *
  * @author Rene de Waele
  */
 class CorrelationDataInterceptorTest {
 
-    private CorrelationDataInterceptor<Message<?>> subject;
-    private UnitOfWork<Message<?>> mockUnitOfWork;
-    private InterceptorChain mockInterceptorChain;
-    private CorrelationDataProvider mockProvider1;
-    private CorrelationDataProvider mockProvider2;
+    private static final GenericMessage TEST_MESSAGE = new GenericMessage(new MessageType("message"), "payload");
+
+    private CorrelationDataProvider providerOne;
+    private CorrelationDataProvider providerTwo;
+    private MessageDispatchInterceptorChain<Message> dispatchInterceptorChain;
+    private MessageHandlerInterceptorChain<Message> handlerInterceptorChain;
+
+    private CorrelationDataInterceptor<Message> testSubject;
 
     @BeforeEach
-    @SuppressWarnings("unchecked")
     void setUp() {
-        mockProvider1 = mock(CorrelationDataProvider.class);
-        mockProvider2 = mock(CorrelationDataProvider.class);
-        subject = new CorrelationDataInterceptor<>(Arrays.asList(mockProvider1, mockProvider2));
-        mockUnitOfWork = mock(UnitOfWork.class);
-        mockInterceptorChain = mock(InterceptorChain.class);
+        providerOne = mock(CorrelationDataProvider.class);
+        providerTwo = mock(CorrelationDataProvider.class);
+        dispatchInterceptorChain = mock();
+        handlerInterceptorChain = mock();
+
+        testSubject = new CorrelationDataInterceptor<>(Arrays.asList(providerOne, providerTwo));
     }
 
     @Test
-    void attachesCorrelationDataProvidersToUnitOfWork() throws Exception {
-        subject.handle(mockUnitOfWork, mockInterceptorChain);
-        verify(mockUnitOfWork).registerCorrelationDataProvider(mockProvider1);
-        verify(mockUnitOfWork).registerCorrelationDataProvider(mockProvider2);
-        verify(mockInterceptorChain).proceed();
+    void interceptOnDispatchProvidesMessageAsIsForNullContext() {
+        testSubject.interceptOnDispatch(TEST_MESSAGE, null, dispatchInterceptorChain);
+
+        verify(dispatchInterceptorChain).proceed(TEST_MESSAGE, null);
+    }
+
+    @Test
+    void interceptOnDispatchProvidesMessageAsWhenCorrelationDataResourceIsNotPresent() {
+        ProcessingContext testContext = new StubProcessingContext();
+
+        testSubject.interceptOnDispatch(TEST_MESSAGE, testContext, dispatchInterceptorChain);
+
+        verify(dispatchInterceptorChain).proceed(TEST_MESSAGE, testContext);
+    }
+
+    @Test
+    void interceptOnDispatchAttachesCorrelationDataFromContextToMessage() {
+        Map<String, String> expectedCorrelationData = Map.of("key1", "value2", "key2", "value2");
+        ProcessingContext testContext = new StubProcessingContext().withResource(CORRELATION_DATA,
+                                                                                 expectedCorrelationData);
+
+        testSubject.interceptOnDispatch(TEST_MESSAGE, testContext, dispatchInterceptorChain);
+
+        ArgumentCaptor<Message> messageCaptor = ArgumentCaptor.forClass(Message.class);
+        verify(dispatchInterceptorChain).proceed(messageCaptor.capture(), eq(testContext));
+        assertThat(messageCaptor.getValue().metadata()).isEqualTo(expectedCorrelationData);
+    }
+
+    @Test
+    void interceptOnHandleAttachesCorrelationDataProvidersToProcessingContext() {
+        Map<String, String> expectedCorrelationData = Map.of("key1", "value2", "key2", "value2");
+        ProcessingContext testContext = new StubProcessingContext();
+
+        when(providerOne.correlationDataFor(any())).thenReturn(Map.of("key1", "value"));
+        when(providerTwo.correlationDataFor(any())).thenReturn(Map.of("key1", "value2", "key2", "value2"));
+
+        testSubject.interceptOnHandle(TEST_MESSAGE, testContext, handlerInterceptorChain);
+
+        verify(providerOne).correlationDataFor(TEST_MESSAGE);
+        verify(providerTwo).correlationDataFor(TEST_MESSAGE);
+        verify(handlerInterceptorChain)
+                .proceed(TEST_MESSAGE, testContext.withResource(CORRELATION_DATA, expectedCorrelationData));
     }
 }

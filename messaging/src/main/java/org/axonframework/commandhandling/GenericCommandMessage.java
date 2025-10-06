@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,102 +16,171 @@
 
 package org.axonframework.commandhandling;
 
+import jakarta.annotation.Nonnull;
+import jakarta.annotation.Nullable;
+import org.axonframework.common.ObjectUtils;
 import org.axonframework.messaging.GenericMessage;
 import org.axonframework.messaging.Message;
 import org.axonframework.messaging.MessageDecorator;
-import org.axonframework.messaging.MetaData;
+import org.axonframework.messaging.MessageType;
+import org.axonframework.messaging.Metadata;
+import org.axonframework.serialization.Converter;
 
+import java.lang.reflect.Type;
 import java.util.Map;
-import javax.annotation.Nonnull;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.OptionalInt;
 
 /**
- * Implementation of the CommandMessage that takes all properties as constructor parameters.
+ * Generic implementation of the {@link CommandMessage} interface.
  *
- * @param <T> The type of payload contained in this Message
  * @author Allard Buijze
- * @since 2.0
+ * @author Steven van Beelen
+ * @since 2.0.0
  */
-public class GenericCommandMessage<T> extends MessageDecorator<T> implements CommandMessage<T> {
+public class GenericCommandMessage extends MessageDecorator implements CommandMessage {
 
-    private static final long serialVersionUID = 3282528436414939876L;
-    private final String commandName;
+    private final String routingKey;
+    private final Integer priority;
 
     /**
-     * Returns the given command as a {@link CommandMessage}. If {@code command} already implements {@code
-     * CommandMessage}, it is returned as-is. When the {@code command} is another implementation of {@link Message}, the
-     * {@link Message#getPayload()} and {@link Message#getMetaData()} are used as input for a new {@link
-     * GenericCommandMessage}. Otherwise, the given {@code command} is wrapped into a {@code GenericCommandMessage} as
-     * its payload.
+     * Constructs a {@code GenericCommandMessage} for the given {@code type} and {@code payload}.
+     * <p>
+     * The {@link Metadata} defaults to an empty instance.
      *
-     * @param command The command to wrap as {@link CommandMessage}.
-     * @return A {@link CommandMessage} containing given {@code command} as payload, a {@code command} if it already
-     * implements {@code CommandMessage}, or a {@code CommandMessage} based on the result of {@link
-     * Message#getPayload()} and {@link Message#getMetaData()} for other {@link Message} implementations.
+     * @param type    The {@link MessageType type} for this {@link CommandMessage}.
+     * @param payload The payload for this {@link CommandMessage}.
      */
-    @SuppressWarnings("unchecked")
-    public static <C> CommandMessage<C> asCommandMessage(@Nonnull Object command) {
-        if (command instanceof CommandMessage) {
-            return (CommandMessage<C>) command;
-        } else if (command instanceof Message) {
-            return new GenericCommandMessage<>(
-                    (C) ((Message<?>) command).getPayload(), ((Message<?>) command).getMetaData()
-            );
-        }
-        return new GenericCommandMessage<>((C) command, MetaData.emptyInstance());
+    public GenericCommandMessage(@Nonnull MessageType type,
+                                 @Nullable Object payload) {
+        this(type, payload, Metadata.emptyInstance());
     }
 
     /**
-     * Create a CommandMessage with the given {@code command} as payload and empty metaData
+     * Constructs a {@code GenericCommandMessage} for the given {@code type}, {@code payload}, and {@code metadata}.
      *
-     * @param payload the payload for the Message
+     * @param type     The {@link MessageType type} for this {@link CommandMessage}.
+     * @param payload  The payload for this {@link CommandMessage}.
+     * @param metadata The metadata for this {@link CommandMessage}.
      */
-    public GenericCommandMessage(@Nonnull T payload) {
-        this(payload, MetaData.emptyInstance());
+    public GenericCommandMessage(@Nonnull MessageType type,
+                                 @Nullable Object payload,
+                                 @Nonnull Map<String, String> metadata) {
+        this(new GenericMessage(type, payload, metadata));
+    }
+
+
+    /**
+     * Constructs a {@code GenericCommandMessage} for the given {@code type}, {@code payload}, and {@code metadata}.
+     * <p>
+     * Optionally, a {@code routingKey} and/or a {@code priority} may be passed.
+     *
+     * @param type       The {@link MessageType type} for this {@link CommandMessage}.
+     * @param payload    The payload for this {@link CommandMessage}.
+     * @param metadata   The metadata for this {@link CommandMessage}.
+     * @param routingKey The routing key for this {@link CommandMessage}, if any.
+     * @param priority   The priority for this {@link CommandMessage}, if any.
+     */
+    public GenericCommandMessage(@Nonnull MessageType type,
+                                 @Nonnull Object payload,
+                                 @Nonnull Map<String, String> metadata,
+                                 @Nullable String routingKey,
+                                 @Nullable Integer priority) {
+        this(new GenericMessage(type, payload, metadata), routingKey, priority);
     }
 
     /**
-     * Create a CommandMessage with the given {@code command} as payload.
+     * Constructs a {@code GenericCommandMessage} with given {@code delegate}.
+     * <p>
+     * The {@code delegate} will be used supply the {@link Message#payload() payload}, {@link Message#type() type},
+     * {@link Message#metadata() metadata} and {@link Message#identifier() identifier} of the resulting
+     * {@code GenericCommandMessage}.
+     * <p>
+     * Unlike the other constructors, this constructor will not attempt to retrieve any correlation data from the Unit
+     * of Work.
      *
-     * @param payload  the payload for the Message
-     * @param metaData The meta data for this message
+     * @param delegate The {@link Message} containing {@link Message#payload() payload},
+     *                 {@link Message#type() qualifiedName}, {@link Message#identifier() identifier} and
+     *                 {@link Message#metadata() metadata} for the {@link CommandMessage} to reconstruct.
      */
-    public GenericCommandMessage(@Nonnull T payload, @Nonnull Map<String, ?> metaData) {
-        this(new GenericMessage<>(payload, metaData), payload.getClass().getName());
+    public GenericCommandMessage(@Nonnull Message delegate) {
+        this(delegate, null, null);
     }
 
     /**
-     * Create a CommandMessage from the given {@code delegate} message containing payload, metadata and message
-     * identifier, and the given {@code commandName}.
+     * Constructs a {@code GenericCommandMessage} with given {@code delegate}, {@code routingKey}, and
+     * {@code priority}.
+     * <p>
+     * The {@code delegate} will be used supply the {@link Message#payload() payload}, {@link Message#type() type},
+     * {@link Message#metadata() metadata} and {@link Message#identifier() identifier} of the resulting
+     * {@code GenericCommandMessage}.<br/> Optionally, a {@code routingKey} and/or a {@code priority} may be passed.
+     * <p>
+     * Unlike the other constructors, this constructor will not attempt to retrieve any correlation data from the Unit
+     * of Work.
      *
-     * @param delegate    the delegate message
-     * @param commandName The name of the command
+     * @param delegate   The {@link Message} containing {@link Message#payload() payload},
+     *                   {@link Message#type() qualifiedName}, {@link Message#identifier() identifier} and
+     *                   {@link Message#metadata() metadata} for the {@link CommandMessage} to reconstruct.
+     * @param routingKey The routing key for this {@link CommandMessage}, if any.
+     * @param priority   The priority for this {@link CommandMessage}, if any.
      */
-    public GenericCommandMessage(@Nonnull Message<T> delegate, @Nonnull String commandName) {
+    public GenericCommandMessage(@Nonnull Message delegate,
+                                 @Nullable String routingKey,
+                                 @Nullable Integer priority) {
         super(delegate);
-        this.commandName = commandName;
+        this.routingKey = routingKey;
+        this.priority = priority;
     }
 
     @Override
-    public String getCommandName() {
-        return commandName;
+    public Optional<String> routingKey() {
+        return Optional.ofNullable(routingKey);
     }
 
     @Override
-    public GenericCommandMessage<T> withMetaData(@Nonnull Map<String, ?> metaData) {
-        return new GenericCommandMessage<>(getDelegate().withMetaData(metaData), commandName);
+    public OptionalInt priority() {
+        if (priority == null) {
+            return OptionalInt.empty();
+        }
+        return OptionalInt.of(priority);
     }
 
     @Override
-    public GenericCommandMessage<T> andMetaData(@Nonnull Map<String, ?> metaData) {
-        return new GenericCommandMessage<>(getDelegate().andMetaData(metaData), commandName);
+    @Nonnull
+    public CommandMessage withMetadata(@Nonnull Map<String, String> metadata) {
+        return new GenericCommandMessage(delegate().withMetadata(metadata));
+    }
+
+    @Override
+    @Nonnull
+    public CommandMessage andMetadata(@Nonnull Map<String, String> metadata) {
+        return new GenericCommandMessage(delegate().andMetadata(metadata));
+    }
+
+    @Override
+    @Nonnull
+    public CommandMessage withConvertedPayload(@Nonnull Type type, @Nonnull Converter converter) {
+        Object convertedPayload = payloadAs(type, converter);
+        if (ObjectUtils.nullSafeTypeOf(convertedPayload).isAssignableFrom(payloadType())) {
+            return this;
+        }
+        Message delegate = delegate();
+        Message converted = new GenericMessage(delegate.identifier(),
+                                               delegate.type(),
+                                               convertedPayload,
+                                               delegate.metadata());
+        return new GenericCommandMessage(converted, routingKey, priority);
     }
 
     @Override
     protected void describeTo(StringBuilder stringBuilder) {
         super.describeTo(stringBuilder);
-        stringBuilder.append(", commandName='")
-                     .append(getCommandName())
-                     .append('\'');
+        stringBuilder.append(", routingKey='")
+                     .append(routingKey().orElse("null"))
+                     .append("', priority='")
+                     .append(priority().orElse(0))
+                     .append("'");
     }
 
     @Override

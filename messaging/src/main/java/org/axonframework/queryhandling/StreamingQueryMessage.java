@@ -1,11 +1,11 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,30 +16,53 @@
 
 package org.axonframework.queryhandling;
 
+import jakarta.annotation.Nonnull;
+import org.axonframework.common.TypeReference;
 import org.axonframework.messaging.responsetypes.PublisherResponseType;
 import org.axonframework.messaging.responsetypes.ResponseType;
+import org.axonframework.serialization.Converter;
 import org.reactivestreams.Publisher;
 
+import java.lang.reflect.Type;
 import java.util.Map;
 
 /**
- * A special type of {@link QueryMessage} used for initiating streaming queries. It's special since it hard codes the
- * response type to {@link PublisherResponseType}.
+ * A {@link QueryMessage} used for initiating streaming queries.
+ * <p>
+ * It hard codes the {@link #responseType() response type} to an {@link PublisherResponseType} implementation.
  *
- * @param <Q> the type of streaming query payload
- * @param <R> the type of the result streamed via {@link Publisher}
  * @author Milan Savic
  * @author Stefan Dragisic
  * @since 4.6.0
  */
-public interface StreamingQueryMessage<Q, R> extends QueryMessage<Q, Publisher<R>> {
+public interface StreamingQueryMessage extends QueryMessage {
 
     @Override
-    ResponseType<Publisher<R>> getResponseType();
+    @Nonnull
+    ResponseType<Publisher<?>> responseType();
 
     @Override
-    StreamingQueryMessage<Q, R> withMetaData(Map<String, ?> metaData);
+    @Nonnull
+    StreamingQueryMessage withMetadata(@Nonnull Map<String, String> metadata);
 
     @Override
-    StreamingQueryMessage<Q, R> andMetaData(Map<String, ?> additionalMetaData);
+    @Nonnull
+    StreamingQueryMessage andMetadata(@Nonnull Map<String, String> additionalMetadata);
+
+    @Override
+    @Nonnull
+    default StreamingQueryMessage withConvertedPayload(@Nonnull Class<?> type, @Nonnull Converter converter) {
+        return withConvertedPayload((Type) type, converter);
+    }
+
+    @Override
+    @Nonnull
+    default StreamingQueryMessage withConvertedPayload(@Nonnull TypeReference<?> type,
+                                                       @Nonnull Converter converter) {
+        return withConvertedPayload(type.getType(), converter);
+    }
+
+    @Override
+    @Nonnull
+    StreamingQueryMessage withConvertedPayload(@Nonnull Type type, @Nonnull Converter converter);
 }

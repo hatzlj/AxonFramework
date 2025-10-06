@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,10 +22,10 @@ import org.axonframework.tracing.SpanAttributesProvider;
 
 import java.util.Collections;
 import java.util.Map;
-import javax.annotation.Nonnull;
+import jakarta.annotation.Nonnull;
 
 /**
- * Adds the {@link Message#getPayloadType payload type} as an attribute to the {@link Span}.
+ * Adds the {@link Message#payloadType payload type} as an attribute to the {@link Span}.
  *
  * @author Mitchell Herrijgers
  * @since 4.6.0
@@ -33,7 +33,7 @@ import javax.annotation.Nonnull;
 public class PayloadTypeSpanAttributesProvider implements SpanAttributesProvider {
 
     @Override
-    public @Nonnull Map<String, String> provideForMessage(@Nonnull Message<?> message) {
-        return Collections.singletonMap("axon_payload_type", message.getPayloadType().getName());
+    public @Nonnull Map<String, String> provideForMessage(@Nonnull Message message) {
+        return Collections.singletonMap("axon_payload_type", message.payloadType().getName());
     }
 }

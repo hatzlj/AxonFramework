@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,22 +16,20 @@
 
 package org.axonframework.micrometer;
 
-import org.axonframework.config.Configurer;
-import org.axonframework.config.ConfigurerModule;
-
-import javax.annotation.Nonnull;
+import jakarta.annotation.Nonnull;
+import org.axonframework.configuration.ComponentRegistry;
+import org.axonframework.configuration.ConfigurationEnhancer;
 
 /**
- * Implementation of the {@link ConfigurerModule} which uses the
- * {@link GlobalMetricRegistry} to register several Metrics Modules to the given
- * {@link org.axonframework.config.Configurer}.
+ * Implementation of the {@link ConfigurationEnhancer} which uses the {@link GlobalMetricRegistry} to register several
+ * Metrics Modules to the given {@link ComponentRegistry}.
  *
  * @author Steven van Beelen
  * @author Marijn van Zelst
  * @author Ivan Dugalic
  * @since 4.1
  */
-public class MetricsConfigurerModule implements ConfigurerModule {
+public class MetricsConfigurerModule implements ConfigurationEnhancer {
 
     private final GlobalMetricRegistry globalMetricRegistry;
     private final boolean useDimensions;
@@ -46,11 +44,11 @@ public class MetricsConfigurerModule implements ConfigurerModule {
     }
 
     @Override
-    public void configureModule(@Nonnull Configurer configurer) {
+    public void enhance(@Nonnull ComponentRegistry configurer) {
         if (useDimensions) {
-            globalMetricRegistry.registerWithConfigurerWithDefaultTags(configurer);
+//            globalMetricRegistry.registerWithConfigurerWithDefaultTags(configurer);
         } else {
-            globalMetricRegistry.registerWithConfigurer(configurer);
+//            globalMetricRegistry.registerWithConfigurer(configurer);
         }
     }
 }

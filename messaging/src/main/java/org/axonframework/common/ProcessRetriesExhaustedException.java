@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2023. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,8 +23,6 @@ package org.axonframework.common;
  * @since 4.5.13
  */
 public class ProcessRetriesExhaustedException extends AxonException {
-
-    private static final long serialVersionUID = 6920545831431694106L;
 
     /**
      * Initializes the exception using the given {@code message}.

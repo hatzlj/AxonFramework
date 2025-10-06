@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2023. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,7 +29,7 @@ import org.axonframework.monitoring.MessageMonitor;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Supplier;
-import javax.annotation.Nonnull;
+import jakarta.annotation.Nonnull;
 
 import static org.axonframework.common.BuilderUtils.assertNonNull;
 
@@ -40,7 +40,7 @@ import static org.axonframework.common.BuilderUtils.assertNonNull;
  * @author Marijn van Zelst
  * @since 3.0
  */
-public class MessageTimerMonitor implements MessageMonitor<Message<?>>, MetricSet {
+public class MessageTimerMonitor implements MessageMonitor<Message>, MetricSet {
 
     private final Timer allTimer;
     private final Timer successTimer;
@@ -76,32 +76,8 @@ public class MessageTimerMonitor implements MessageMonitor<Message<?>>, MetricSe
         ignoredTimer = new Timer(reservoirFactory.get(), clock);
     }
 
-    /**
-     * Creates a MessageTimerMonitor using a default clock
-     *
-     * @deprecated in favor of the {@link #builder()}
-     */
-    @Deprecated
-    public MessageTimerMonitor() {
-        this(Clock.defaultClock());
-    }
-
-    /**
-     * Creates a MessageTimerMonitor using the provided clock
-     *
-     * @param clock the clock used to measure the process time of each message
-     * @deprecated in favor of the {@link #builder()}
-     */
-    @Deprecated
-    public MessageTimerMonitor(Clock clock) {
-        allTimer = new Timer(new ExponentiallyDecayingReservoir(), clock);
-        successTimer = new Timer(new ExponentiallyDecayingReservoir(), clock);
-        failureTimer = new Timer(new ExponentiallyDecayingReservoir(), clock);
-        ignoredTimer = new Timer(new ExponentiallyDecayingReservoir(), clock);
-    }
-
     @Override
-    public MonitorCallback onMessageIngested(@Nonnull Message<?> message) {
+    public MonitorCallback onMessageIngested(@Nonnull Message message) {
         final Timer.Context allTimerContext = this.allTimer.time();
         final Timer.Context successTimerContext = this.successTimer.time();
         final Timer.Context failureTimerContext = this.failureTimer.time();

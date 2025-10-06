@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2018. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 package org.axonframework.eventhandling;
 
 import org.axonframework.common.Registration;
+import org.axonframework.messaging.MessageType;
 import org.junit.jupiter.api.*;
 
 import java.util.List;
@@ -31,9 +32,9 @@ import static org.mockito.Mockito.*;
  */
 class SimpleEventBusTest {
 
-    private Consumer<List<? extends EventMessage<?>>> listener1;
-    private Consumer<List<? extends EventMessage<?>>> listener2;
-    private Consumer<List<? extends EventMessage<?>>> listener3;
+    private Consumer<List<? extends EventMessage>> listener1;
+    private Consumer<List<? extends EventMessage>> listener2;
+    private Consumer<List<? extends EventMessage>> listener3;
 
     private EventBus testSubject;
 
@@ -52,7 +53,6 @@ class SimpleEventBusTest {
     @Test
     void eventIsDispatchedToSubscribedListeners() {
         testSubject.publish(newEvent());
-        //noinspection resource
         testSubject.subscribe(listener1);
         // subscribing twice should not make a difference
         Registration subscription1 = testSubject.subscribe(listener1);
@@ -60,12 +60,12 @@ class SimpleEventBusTest {
         Registration subscription2 = testSubject.subscribe(listener2);
         Registration subscription3 = testSubject.subscribe(listener3);
         testSubject.publish(newEvent());
-        subscription1.close();
+        subscription1.cancel();
         testSubject.publish(newEvent());
-        subscription2.close();
-        subscription3.close();
+        subscription2.cancel();
+        subscription3.cancel();
         // unsubscribe a non-subscribed listener should not fail
-        subscription3.close();
+        subscription3.cancel();
         testSubject.publish(newEvent());
 
         verify(listener1, times(2)).accept(anyList());
@@ -73,7 +73,7 @@ class SimpleEventBusTest {
         verify(listener3, times(2)).accept(anyList());
     }
 
-    private EventMessage<Object> newEvent() {
-        return new GenericEventMessage<>(new Object());
+    private EventMessage newEvent() {
+        return new GenericEventMessage(new MessageType("event"), new Object());
     }
 }

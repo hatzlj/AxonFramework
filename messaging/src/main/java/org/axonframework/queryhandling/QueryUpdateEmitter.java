@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,182 +16,204 @@
 
 package org.axonframework.queryhandling;
 
-import org.axonframework.messaging.MessageDispatchInterceptorSupport;
+import jakarta.annotation.Nonnull;
+import jakarta.annotation.Nullable;
+import org.axonframework.common.infra.DescribableComponent;
+import org.axonframework.messaging.Context.ResourceKey;
+import org.axonframework.messaging.MessageTypeNotResolvedException;
+import org.axonframework.messaging.MessageTypeResolver;
+import org.axonframework.messaging.QualifiedName;
+import org.axonframework.messaging.conversion.MessageConverter;
+import org.axonframework.messaging.unitofwork.ProcessingContext;
 
-import java.util.Collections;
-import java.util.Set;
 import java.util.function.Predicate;
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
+import java.util.function.Supplier;
 
 /**
- * Component which informs subscription queries about updates, errors and when there are no more updates.
+ * Query-specific component that interacts with
+ * {@link QueryBus#subscriptionQuery(SubscriptionQueryMessage, ProcessingContext, int) subscription queries} about
+ * {@link #emit(Class, Predicate, Object) updates}, {@link #completeExceptionally(Class, Predicate, Throwable) errors},
+ * and when there are {@link #complete(Class, Predicate) no more updates}.
  * <p>
- * If any of the emitter functions in this interface are called from a message handling function (e.g. an {@link
- * org.axonframework.eventhandling.EventHandler} annotated function), then that call will automatically be tied into the
- * lifecycle of the current {@link org.axonframework.messaging.unitofwork.UnitOfWork} to ensure correct order of
- * execution.
- * <p>
- * Added, implementations of this class should thus respect any current UnitOfWork in the {@link
- * org.axonframework.messaging.unitofwork.UnitOfWork.Phase#STARTED} phase for any of the emitting functions. If this is
- * the case then the emitter call action should be performed during the {@link org.axonframework.messaging.unitofwork.UnitOfWork.Phase#AFTER_COMMIT}.
- * Otherwise the operation can be executed immediately.
+ * Implementations of the {@code QueryUpdateEmitter} are expected to be {@link ProcessingContext context-aware}, to
+ * ensure operations occur within the correct order of (for example) the lifecycle of an
+ * {@link org.axonframework.eventhandling.EventHandler event handling function.}
  *
  * @author Milan Savic
- * @since 3.3
+ * @author Steven van Beelen
+ * @since 3.3.0
  */
-public interface QueryUpdateEmitter extends MessageDispatchInterceptorSupport<SubscriptionQueryUpdateMessage<?>> {
+public interface QueryUpdateEmitter extends DescribableComponent {
 
     /**
-     * Emits incremental update (as return value of provided update function) to subscription queries matching given
-     * filter.
-     *
-     * @param filter predicate on subscription query message used to filter subscription queries
-     * @param update incremental update message
-     * @param <U>    the type of the update
+     * The {@link ResourceKey} used to store the {@link QueryUpdateEmitter} in the {@link ProcessingContext}.
      */
-    <U> void emit(@Nonnull Predicate<SubscriptionQueryMessage<?, ?, U>> filter,
-                  @Nonnull SubscriptionQueryUpdateMessage<U> update);
+    ResourceKey<QueryUpdateEmitter> RESOURCE_KEY = ResourceKey.withLabel("QueryUpdateEmitter");
 
     /**
-     * Emits given incremental update to subscription queries matching given filter. If an {@code update} is {@code
-     * null}, emit will be skipped. In order to send nullable updates, use {@link #emit(Class, Predicate,
-     * SubscriptionQueryUpdateMessage)} or {@link #emit(Predicate, SubscriptionQueryUpdateMessage)} methods.
+     * Creates a query update emitter for the given {@link ProcessingContext}.
+     * <p>
+     * You can use this emitter <b>only</b> for the context it was created for. There is no harm in using this method
+     * more than once with the same {@code context}, as the same emitter will be returned.
      *
-     * @param filter predicate on subscription query message used to filter subscription queries
-     * @param update incremental update
-     * @param <U>    the type of the update
+     * @param context The {@link ProcessingContext} to create the emitter for.
+     * @return The emitter specific for the given {@code context}.
      */
-    default <U> void emit(@Nonnull Predicate<SubscriptionQueryMessage<?, ?, U>> filter, @Nullable U update) {
-        if (update != null) {
-            emit(filter, GenericSubscriptionQueryUpdateMessage.asUpdateMessage(update));
-        }
+    static QueryUpdateEmitter forContext(@Nonnull ProcessingContext context) {
+        return context.computeResourceIfAbsent(
+                RESOURCE_KEY,
+                () -> new SimpleQueryUpdateEmitter(
+                        context.component(QueryBus.class),
+                        context.component(MessageTypeResolver.class),
+                        context.component(MessageConverter.class),
+                        context
+                )
+        );
     }
 
     /**
-     * Emits given incremental update to subscription queries matching given query type and filter.
+     * Emits given {@code update} to subscription queries matching the given {@code queryType} and given
+     * {@code filter}.
      *
-     * @param queryType the type of the query
-     * @param filter    predicate on query payload used to filter subscription queries
-     * @param update    incremental update message
-     * @param <Q>       the type of the query
-     * @param <U>       the type of the update
+     * @param queryType The type of the {@link SubscriptionQueryMessage} to filter on.
+     * @param filter    A predicate testing the {@link SubscriptionQueryMessage#payload()}, converted to the given
+     *                  {@code queryType} to filter on.
+     * @param update    The incremental update to emit for
+     *                  {@link QueryBus#subscriptionQuery(SubscriptionQueryMessage, ProcessingContext, int) subscription
+     *                  queries} matching the given {@code filter}.
+     * @param <Q>       The type of the {@link SubscriptionQueryMessage} to filter on.
+     * @throws MessageTypeNotResolvedException                     If the given {@code queryType} has no known
+     *                                                             {@link org.axonframework.messaging.MessageType}
+     *                                                             equivalent required to filter the
+     *                                                             {@link SubscriptionQueryMessage#payload()}.
+     * @throws org.axonframework.serialization.ConversionException If the {@link SubscriptionQueryMessage#payload()}
+     *                                                             could not be converted to the given {@code queryType}
+     *                                                             to perform the given {@code filter}. Will only occur
+     *                                                             if a {@link org.axonframework.messaging.MessageType}
+     *                                                             could be found for the given {@code queryType}.
      */
-    @SuppressWarnings("unchecked")
-    default <Q, U> void emit(@Nonnull Class<Q> queryType,
-                             @Nonnull Predicate<? super Q> filter,
-                             @Nonnull SubscriptionQueryUpdateMessage<U> update) {
-        Predicate<SubscriptionQueryMessage<?, ?, U>> sqmFilter =
-                m -> queryType.isAssignableFrom(m.getPayloadType()) && filter.test((Q) m.getPayload());
-        emit(sqmFilter, update);
+    default <Q> void emit(@Nonnull Class<Q> queryType, @Nonnull Predicate<? super Q> filter, @Nullable Object update) {
+        emit(queryType, filter, () -> update);
     }
 
     /**
-     * Emits given incremental update to subscription queries matching given query type and filter. If an {@code update}
-     * is {@code null}, emit will be skipped. In order to send nullable updates, use {@link #emit(Class, Predicate,
-     * SubscriptionQueryUpdateMessage)} or {@link #emit(Predicate, SubscriptionQueryUpdateMessage)} methods.
+     * Emits the outcome of the {@code updateSupplier} to subscription queries matching the given {@code queryType} and
+     * given {@code filter}.
+     * <p>
+     * The {@code updateSupplier} is only invoked whenever there are matching queries.
      *
-     * @param queryType the type of the query
-     * @param filter    predicate on query payload used to filter subscription queries
-     * @param update    incremental update
-     * @param <Q>       the type of the query
-     * @param <U>       the type of the update
+     * @param queryType      The type of the {@link SubscriptionQueryMessage} to filter on.
+     * @param filter         A predicate testing the {@link SubscriptionQueryMessage#payload()}, converted to the given
+     *                       {@code queryType} to filter on.
+     * @param updateSupplier The update supplier to emit for
+     *                       {@link QueryBus#subscriptionQuery(SubscriptionQueryMessage, ProcessingContext, int)
+     *                       subscription queries} matching the given {@code queryType} and {@code filter}.
+     * @param <Q>            The type of the {@link SubscriptionQueryMessage} to filter on.
+     * @throws MessageTypeNotResolvedException                     If the given {@code queryType} has no known
+     *                                                             {@link org.axonframework.messaging.MessageType}
+     *                                                             equivalent required to filter the
+     *                                                             {@link SubscriptionQueryMessage#payload()}.
+     * @throws org.axonframework.serialization.ConversionException If the {@link SubscriptionQueryMessage#payload()}
+     *                                                             could not be converted to the given {@code queryType}
+     *                                                             to perform the given {@code filter}. Will only occur
+     *                                                             if a {@link org.axonframework.messaging.MessageType}
+     *                                                             could be found for the given {@code queryType}.
      */
-    default <Q, U> void emit(@Nonnull Class<Q> queryType, @Nonnull Predicate<? super Q> filter, @Nullable U update) {
-        if (update != null) {
-            emit(queryType, filter, GenericSubscriptionQueryUpdateMessage.asUpdateMessage(update));
-        }
+    <Q> void emit(@Nonnull Class<Q> queryType,
+                  @Nonnull Predicate<? super Q> filter,
+                  @Nonnull Supplier<Object> updateSupplier);
+
+    /**
+     * Emits given {@code update} to subscription queries matching the given {@code queryName} and given
+     * {@code filter}.
+     *
+     * @param queryName The qualified name of the {@link SubscriptionQueryMessage#type()} to filter on.
+     * @param filter    A predicate testing the {@link SubscriptionQueryMessage#payload()} as is to the given
+     *                  {@code queryType} to filter on.
+     * @param update    The incremental update to emit for
+     *                  {@link QueryBus#subscriptionQuery(SubscriptionQueryMessage, ProcessingContext, int) subscription
+     *                  queries} matching the given {@code filter}.
+     */
+    default void emit(@Nonnull QualifiedName queryName, @Nonnull Predicate<Object> filter, @Nullable Object update) {
+        emit(queryName, filter, () -> update);
     }
 
     /**
-     * Completes subscription queries matching given filter.
+     * Emits the outcome of the {@code updateSupplier} to subscription queries matching the given {@code queryName} and
+     * given {@code filter}.
+     * <p>
+     * The {@code updateSupplier} is only invoked whenever there are matching queries.
      *
-     * @param filter predicate on subscription query message used to filter subscription queries
+     * @param queryName      The qualified name of the {@link SubscriptionQueryMessage#type()} to filter on.
+     * @param filter         A predicate testing the {@link SubscriptionQueryMessage#payload()} as is to the given
+     *                       {@code queryType} to filter on.
+     * @param updateSupplier The update supplier to emit for
+     *                       {@link QueryBus#subscriptionQuery(SubscriptionQueryMessage, ProcessingContext, int)
+     *                       subscription queries} matching the given {@code queryName} and {@code filter}.
      */
-    void complete(@Nonnull Predicate<SubscriptionQueryMessage<?, ?, ?>> filter);
+    void emit(@Nonnull QualifiedName queryName,
+              @Nonnull Predicate<Object> filter,
+              @Nonnull Supplier<Object> updateSupplier);
 
     /**
-     * Completes subscription queries matching given query type and filter.
+     * Completes subscription queries matching the given {@code queryType} and {@code filter}.
      *
-     * @param queryType the type of the query
-     * @param filter    predicate on query payload used to filter subscription queries
-     * @param <Q>       the type of the query
+     * @param queryType The type of the {@link SubscriptionQueryMessage} to filter on.
+     * @param filter    A predicate testing the {@link SubscriptionQueryMessage#payload()}, converted to the given
+     *                  {@code queryType} to filter on.
+     * @param <Q>       The type of the {@link SubscriptionQueryMessage} to filter on.
+     * @throws MessageTypeNotResolvedException                     If the given {@code queryType} has no known
+     *                                                             {@link org.axonframework.messaging.MessageType}
+     *                                                             equivalent required to filter the
+     *                                                             {@link SubscriptionQueryMessage#payload()}.
+     * @throws org.axonframework.serialization.ConversionException If the {@link SubscriptionQueryMessage#payload()}
+     *                                                             could not be converted to the given {@code queryType}
+     *                                                             to perform the given {@code filter}. Will only occur
+     *                                                             if a {@link org.axonframework.messaging.MessageType}
+     *                                                             could be found for the given {@code queryType}.
      */
-    @SuppressWarnings("unchecked")
-    default <Q> void complete(@Nonnull Class<Q> queryType, @Nonnull Predicate<? super Q> filter) {
-        Predicate<SubscriptionQueryMessage<?, ?, ?>> sqmFilter =
-                m -> queryType.isAssignableFrom(m.getPayloadType()) && filter.test((Q) m.getPayload());
-        complete(sqmFilter);
-    }
+    <Q> void complete(@Nonnull Class<Q> queryType, @Nonnull Predicate<? super Q> filter);
 
     /**
-     * Completes with an error subscription queries matching given filter.
+     * Completes subscription queries matching the given {@code queryName} and {@code filter}.
      *
-     * @param filter predicate on subscription query message used to filter subscription queries
-     * @param cause  the cause of an error
+     * @param queryName The qualified name of the {@link SubscriptionQueryMessage#type()} to filter on.
+     * @param filter    A predicate testing the {@link SubscriptionQueryMessage#payload()} as is to the given
+     *                  {@code queryType} to filter on.
      */
-    void completeExceptionally(@Nonnull Predicate<SubscriptionQueryMessage<?, ?, ?>> filter, @Nonnull Throwable cause);
+    void complete(@Nonnull QualifiedName queryName, @Nonnull Predicate<Object> filter);
 
     /**
-     * Completes with an error subscription queries matching given query type and filter
+     * Completes subscription queries with the given {@code cause} matching given {@code queryType} and {@code filter}.
      *
-     * @param queryType the type of the query
-     * @param filter    predicate on query payload used to filter subscription queries
-     * @param cause     the cause of an error
-     * @param <Q>       the type of the query
+     * @param queryType The type of the {@link SubscriptionQueryMessage} to filter on.
+     * @param filter    A predicate testing the {@link SubscriptionQueryMessage#payload()}, converted to the given
+     *                  {@code queryType} to filter on.
+     * @param cause     The cause of an error leading to exceptionally complete subscription queries.
+     * @param <Q>       The type of the {@link SubscriptionQueryMessage} to filter on.
+     * @throws MessageTypeNotResolvedException                     If the given {@code queryType} has no known
+     *                                                             {@link org.axonframework.messaging.MessageType}
+     *                                                             equivalent required to filter the
+     *                                                             {@link SubscriptionQueryMessage#payload()}.
+     * @throws org.axonframework.serialization.ConversionException If the {@link SubscriptionQueryMessage#payload()}
+     *                                                             could not be converted to the given {@code queryType}
+     *                                                             to perform the given {@code filter}. Will only occur
+     *                                                             if a {@link org.axonframework.messaging.MessageType}
+     *                                                             could be found for the given {@code queryType}.
      */
-    @SuppressWarnings("unchecked")
-    default <Q> void completeExceptionally(@Nonnull Class<Q> queryType, @Nonnull Predicate<? super Q> filter,
-                                           @Nonnull Throwable cause) {
-        Predicate<SubscriptionQueryMessage<?, ?, ?>> sqmFilter =
-                m -> queryType.isAssignableFrom(m.getPayloadType()) && filter.test((Q) m.getPayload());
-        completeExceptionally(sqmFilter, cause);
-    }
+    <Q> void completeExceptionally(@Nonnull Class<Q> queryType,
+                                   @Nonnull Predicate<? super Q> filter,
+                                   @Nonnull Throwable cause);
 
     /**
-     * Checks whether there is a query update handler for a given {@code query}.
+     * Completes subscription queries with the given {@code cause} matching given {@code queryName} and {@code filter}.
      *
-     * @param query the subscription query for which we have registered the update handler
-     * @return {@code true} if there is an update handler registered for given {@code query}, {@code false} otherwise
+     * @param queryName The qualified name of the {@link SubscriptionQueryMessage#type()} to filter on.
+     * @param filter    A predicate testing the {@link SubscriptionQueryMessage#payload()} as is to the given
+     *                  {@code queryType} to filter on.
+     * @param cause     The cause of an error leading to exceptionally complete subscription queries.
      */
-    boolean queryUpdateHandlerRegistered(@Nonnull SubscriptionQueryMessage<?, ?, ?> query);
-
-    /**
-     * Registers an Update Handler for given {@code query} with given {@code backpressure} and {@code
-     * updateBufferSize}.
-     *
-     * @param query            the subscription query for which we register an Update Handler
-     * @param backpressure     the backpressure mechanism to be used for emitting updates
-     * @param updateBufferSize the size of buffer which accumulates updates before subscription to the {@code flux} is
-     *                         made
-     * @param <U>              the incremental response types of the query
-     * @return the object which contains updates and a registration which can be used to cancel them
-     * @deprecated in favour of using {{@link #registerUpdateHandler(SubscriptionQueryMessage, int)}}
-     */
-    @Deprecated
-    <U> UpdateHandlerRegistration<U> registerUpdateHandler(SubscriptionQueryMessage<?, ?, ?> query,
-                                                           SubscriptionQueryBackpressure backpressure,
-                                                           int updateBufferSize);
-
-    /**
-     * Registers an Update Handler for given {@code query} with given {@code updateBufferSize}.
-     *
-     * @param query            the subscription query for which we register an Update Handler
-     * @param updateBufferSize the size of buffer which accumulates updates before subscription to the {@code flux} is
-     *                         made
-     * @param <U>              the incremental response types of the query
-     * @return the object which contains updates and a registration which can be used to cancel them
-     */
-    <U> UpdateHandlerRegistration<U> registerUpdateHandler(@Nonnull SubscriptionQueryMessage<?, ?, ?> query,
-                                                           int updateBufferSize);
-
-    /**
-     * Provides the set of running subscription queries. If there are changes to subscriptions they will be reflected in
-     * the returned set of this method. Implementations should provide an unmodifiable set of the active subscriptions.
-     *
-     * @return the set of running subscription queries
-     */
-    default Set<SubscriptionQueryMessage<?, ?, ?>> activeSubscriptions() {
-        return Collections.emptySet();
-    }
+    void completeExceptionally(@Nonnull QualifiedName queryName,
+                               @Nonnull Predicate<Object> filter,
+                               @Nonnull Throwable cause);
 }

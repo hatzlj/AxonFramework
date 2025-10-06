@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2020. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,118 +16,152 @@
 
 package org.axonframework.messaging;
 
+import jakarta.annotation.Nonnull;
+import jakarta.annotation.Nullable;
 import org.axonframework.common.IdentifierFactory;
+import org.axonframework.common.ObjectUtils;
+import org.axonframework.common.TypeReference;
 import org.axonframework.messaging.unitofwork.CurrentUnitOfWork;
-import org.axonframework.serialization.SerializedObject;
-import org.axonframework.serialization.SerializedObjectHolder;
-import org.axonframework.serialization.Serializer;
+import org.axonframework.messaging.unitofwork.LegacyUnitOfWork;
+import org.axonframework.serialization.ConversionException;
+import org.axonframework.serialization.Converter;
 
+import java.lang.reflect.Type;
 import java.util.Map;
 
 /**
- * Generic implementation of a {@link Message} that contains the payload and metadata as unserialized values.
+ * Generic implementation of the {@link Message} interface containing the {@link #payload() payload} and
+ * {@link #metadata() metadata} in deserialized form.
  * <p>
- * If a GenericMessage is created while a {@link org.axonframework.messaging.unitofwork.UnitOfWork} is active it copies
- * over the correlation data of the UnitOfWork to the created message.
+ * If a {@link GenericMessage} is created while a {@link LegacyUnitOfWork} is active it copies over the correlation data
+ * of the {@code UnitOfWork} to the created message.
+ * <p>
+ * This {@code Message} implementation is "conversion aware," as it maintains <b>any</b> conversion results from
+ * {@link #payloadAs(Type, Converter)} and {@link #withConvertedPayload(Type, Converter)} (either invoked with a
+ * {@link Class}, {@link TypeReference}, or {@link Type}), together with the hash of the given {@link Converter}. In
+ * doing so, this {@code Message} optimizes subsequent {@code payloadAs/withConvertedPayload} invocations for the same
+ * type-and-converter combination. If this optimization should be disabled, the {@code "AXON_CONVERSION_CACHE_ENABLED"}
+ * system property can be set to {@code false}.
  *
  * @author Allard Buijze
- * @since 2.0
+ * @author Steven van Beelen
+ * @since 2.0.0
  */
-public class GenericMessage<T> extends AbstractMessage<T> {
+public class GenericMessage extends AbstractMessage {
 
-    private static final long serialVersionUID = 7937214711724527316L;
-    private final MetaData metaData;
-    private final Class<T> payloadType;
-    private final T payload;
-    private transient volatile SerializedObjectHolder serializedObjectHolder;
+    private final Object payload;
+    private final Class<?> payloadType;
+    private final Metadata metadata;
+
+    private final ConversionCache convertedPayloads;
 
     /**
-     * Returns a Message representing the given {@code payloadOrMessage}, either by wrapping it or by returning it
-     * as-is. If the given {@code payloadOrMessage} already implements {@link Message}, it is returned as-is, otherwise
-     * a {@link Message} is returned with the parameter as its payload.
+     * Constructs a {@code GenericMessage} for the given {@code type} and {@code payload}.
+     * <p>
+     * Uses the correlation data of the current Unit of Work, if present.
      *
-     * @param payloadOrMessage The payload to wrap or message to return
-     * @return a Message with the given payload or the message
+     * @param type    The {@link MessageType type} for this {@link Message}.
+     * @param payload The payload for this {@link Message}.
      */
-    public static Message<?> asMessage(Object payloadOrMessage) {
-        if (payloadOrMessage instanceof Message) {
-            return (Message<?>) payloadOrMessage;
-        } else {
-            return new GenericMessage<>(payloadOrMessage);
-        }
+    public GenericMessage(@Nonnull MessageType type,
+                          @Nullable Object payload) {
+        this(type, payload, Metadata.emptyInstance());
     }
 
     /**
-     * Constructs a Message for the given {@code payload} using the correlation data of the current Unit of Work, if
+     * Constructs a {@code GenericMessage} for the given {@code type}, {@code payload}, and {@code metadata}.
+     * <p>
+     * The given {@code metadata} is merged with the {@link Metadata} from the correlation data of the current Unit of
+     * Work, if present. In case the {@code payload == null}, {@link Void} will be used as the {@code payloadType}.
+     *
+     * @param type     The {@link MessageType type} for this {@link Message}.
+     * @param payload  The payload for this {@link Message}.
+     * @param metadata The metadata for this {@link Message}.
+     */
+    public GenericMessage(@Nonnull MessageType type,
+                          @Nullable Object payload,
+                          @Nonnull Map<String, String> metadata) {
+        this(type, payload, getDeclaredPayloadType(payload), metadata);
+    }
+
+    /**
+     * Constructs a {@code GenericMessage} for the given {@code type}, {@code payload}, {@code declaredPayloadType}, and
+     * {@code metadata}.
+     * <p>
+     * The given {@code metadata} is merged with the Metadata from the correlation data of the current Unit of Work, if
      * present.
      *
-     * @param payload The payload for the message
+     * @param <P>                 The generic type of the expected payload of the resulting object.
+     * @param type                The {@link MessageType type} for this {@link Message}.
+     * @param payload             The payload of type {@code P} for this {@link Message}.
+     * @param declaredPayloadType The declared type of the {@code payload} of this {@link Message}.
+     * @param metadata            The metadata for this {@link Message}.
      */
-    public GenericMessage(T payload) {
-        this(payload, MetaData.emptyInstance());
+    public <P> GenericMessage(@Nonnull MessageType type,
+                              @Nullable P payload,
+                              @Nonnull Class<P> declaredPayloadType,
+                              @Nonnull Map<String, ?> metadata) {
+        this(IdentifierFactory.getInstance().generateIdentifier(),
+             type,
+             payload,
+             declaredPayloadType,
+             CurrentUnitOfWork.correlationData().mergedWith(Metadata.from((Map<String, String>) metadata)));
     }
 
     /**
-     * Constructs a Message for the given {@code payload} and {@code meta data}. The given {@code metaData} is merged
-     * with the MetaData from the correlation data of the current unit of work, if present. In case the {@code payload
-     * == null}, {@link Void} will be used as the {@code payloadType}.
+     * Constructs a {@code GenericMessage} for the given {@code identifier}, {@code type}, {@code payload}, and
+     * {@code metadata}, intended to reconstruct another {@link Message}.
+     * <p>
+     * Unlike the other constructors, this constructor will not attempt to retrieve any correlation data from the Unit
+     * of Work. If you in tend to construct a new {@code GenericMessage}, please use
+     * {@link #GenericMessage(MessageType, Object)} instead.
      *
-     * @param payload  The payload for the message as a generic {@code T}
-     * @param metaData The meta data {@link Map} for the message
+     * @param identifier The identifier of this {@link Message}.
+     * @param type       The {@link MessageType type} for this {@link Message}.
+     * @param payload    The payload for this {@link Message}.
+     * @param metadata   The metadata for this {@link Message}.
      */
-    public GenericMessage(T payload, Map<String, ?> metaData) {
-        this(getDeclaredPayloadType(payload), payload, metaData);
+    public GenericMessage(@Nonnull String identifier,
+                          @Nonnull MessageType type,
+                          @Nullable Object payload,
+                          @Nonnull Map<String, String> metadata) {
+        this(identifier, type, payload, getDeclaredPayloadType(payload), metadata);
     }
 
     /**
-     * Constructs a Message for the given {@code payload} and {@code meta data}. The given {@code metaData} is merged
-     * with the MetaData from the correlation data of the current unit of work, if present.
+     * Constructs a {@code GenericMessage} for the given {@code identifier}, {@code type}, {@code payload}, and
+     * {@code metadata}, intended to reconstruct another {@link Message}.
+     * <p>
+     * Unlike the other constructors, this constructor will not attempt to retrieve any correlation data from the Unit
+     * of Work. If you in tend to construct a new {@code GenericMessage}, please use
+     * {@link #GenericMessage(MessageType, Object)} instead.
      *
-     * @param declaredPayloadType The declared type of message payload
-     * @param payload             The payload for the message
-     * @param metaData            The meta data for the message
+     * @param <P>                 The generic type of the expected payload of the resulting object.
+     * @param identifier          The identifier of this {@link Message}.
+     * @param type                The {@link MessageType type} for this {@link Message}.
+     * @param payload             The payload of type {@code P} for this {@link Message}.
+     * @param declaredPayloadType The declared type of the {@code payload} of this {@link Message}.
+     * @param metadata            The metadata for this {@link Message}.
      */
-    public GenericMessage(Class<T> declaredPayloadType, T payload, Map<String, ?> metaData) {
-        this(IdentifierFactory.getInstance().generateIdentifier(), declaredPayloadType, payload,
-             CurrentUnitOfWork.correlationData().mergedWith(MetaData.from(metaData)));
-    }
-
-    /**
-     * Constructor to reconstruct a Message using existing data. Note that no correlation data from a UnitOfWork is
-     * attached when using this constructor. If you're constructing a new Message, use {@link #GenericMessage(Object,
-     * Map)} instead.
-     *
-     * @param identifier The identifier of the Message
-     * @param payload    The payload of the message
-     * @param metaData   The meta data of the message
-     * @throws NullPointerException when the given {@code payload} is {@code null}.
-     */
-    public GenericMessage(String identifier, T payload, Map<String, ?> metaData) {
-        this(identifier, getDeclaredPayloadType(payload), payload, metaData);
-    }
-
-    /**
-     * Constructor to reconstruct a Message using existing data. Note that no correlation data from a UnitOfWork is
-     * attached when using this constructor. If you're constructing a new Message, use {@link #GenericMessage(Object,
-     * Map)} instead
-     *
-     * @param identifier          The identifier of the Message
-     * @param declaredPayloadType The declared type of message payload
-     * @param payload             The payload for the message
-     * @param metaData            The meta data for the message
-     */
-    public GenericMessage(String identifier, Class<T> declaredPayloadType, T payload, Map<String, ?> metaData) {
-        super(identifier);
-        this.metaData = MetaData.from(metaData);
+    public <P> GenericMessage(@Nonnull String identifier,
+                              @Nonnull MessageType type,
+                              @Nullable P payload,
+                              @Nonnull Class<P> declaredPayloadType,
+                              @Nonnull Map<String, String> metadata) {
+        super(identifier, type);
         this.payload = payload;
         this.payloadType = declaredPayloadType;
+        this.metadata = Metadata.from(metadata);
+        this.convertedPayloads = new ConversionCache(payload);
     }
 
-    private GenericMessage(GenericMessage<T> original, MetaData metaData) {
-        super(original.getIdentifier());
-        this.payload = original.getPayload();
-        this.payloadType = original.getPayloadType();
-        this.metaData = metaData;
+    private GenericMessage(@Nonnull GenericMessage original,
+                           @Nonnull Metadata metadata) {
+        super(original.identifier(), original.type());
+        this.payload = original.payload();
+        this.payloadType = original.payloadType();
+        this.metadata = metadata;
+        this.convertedPayloads = new ConversionCache(payload);
     }
 
     /**
@@ -137,45 +171,67 @@ public class GenericMessage<T> extends AbstractMessage<T> {
      * @param payload the payload of this {@link Message}
      * @return the declared type of the given {@code payload} or {@link Void} if {@code payload == null}
      */
-    @SuppressWarnings("unchecked")
-    private static <T> Class<T> getDeclaredPayloadType(T payload) {
-        return payload != null ? (Class<T>) payload.getClass() : (Class<T>) Void.class;
+    private static <T> Class<T> getDeclaredPayloadType(@Nullable T payload) {
+        return ObjectUtils.nullSafeTypeOf(payload);
+    }
+
+    /**
+     * Construct an empty message.
+     *
+     * @return A message with {@code null} {@link Message#payload()}, no {@link Metadata}, and a {@link Message#type()}
+     * of {@code "empty"}.
+     */
+    public static Message emptyMessage() {
+        return new GenericMessage(new MessageType("empty"), null);
     }
 
     @Override
-    public MetaData getMetaData() {
-        return metaData;
+    @Nullable
+    public Object payload() {
+        return this.payload;
     }
 
     @Override
-    public T getPayload() {
-        return payload;
-    }
-
-    @Override
-    public Class<T> getPayloadType() {
-        return payloadType;
-    }
-
-    @Override
-    protected Message<T> withMetaData(MetaData metaData) {
-        return new GenericMessage<>(this, metaData);
-    }
-
-    @Override
-    public <R> SerializedObject<R> serializePayload(Serializer serializer, Class<R> expectedRepresentation) {
-        return serializedObjectHolder().serializePayload(serializer, expectedRepresentation);
-    }
-
-    @Override
-    public <R> SerializedObject<R> serializeMetaData(Serializer serializer, Class<R> expectedRepresentation) {
-        return serializedObjectHolder().serializeMetaData(serializer, expectedRepresentation);
-    }
-
-    private SerializedObjectHolder serializedObjectHolder() {
-        if (serializedObjectHolder == null) {
-            serializedObjectHolder = new SerializedObjectHolder(this);
+    @Nullable
+    public <T> T payloadAs(@Nonnull Type type, @Nullable Converter converter) {
+        //noinspection rawtypes,unchecked
+        if (type instanceof Class clazz && clazz.isAssignableFrom(payloadType()) || Void.class.equals(payloadType())) {
+            //noinspection unchecked
+            return (T) payload();
         }
-        return serializedObjectHolder;
+
+        if (converter == null) {
+            throw new ConversionException("Cannot convert " + payloadType() + " to " + type + " without a converter.");
+        }
+        return convertedPayloads.convertIfAbsent(type, converter);
+    }
+
+    @Override
+    @Nonnull
+    public Class<?> payloadType() {
+        return this.payloadType;
+    }
+
+    @Override
+    @Nonnull
+    public Metadata metadata() {
+        return this.metadata;
+    }
+
+    @Override
+    @Nonnull
+    protected Message withMetadata(Metadata metadata) {
+        return new GenericMessage(this, metadata);
+    }
+
+    @Override
+    @Nonnull
+    public Message withConvertedPayload(@Nonnull Type type,
+                                        @Nonnull Converter converter) {
+        Object convertedPayload = payloadAs(type, converter);
+
+        return ObjectUtils.nullSafeTypeOf(convertedPayload).isAssignableFrom(payloadType())
+                ? (Message) this
+                : new GenericMessage(identifier(), type(), convertedPayload, metadata());
     }
 }

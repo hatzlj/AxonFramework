@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2018. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,10 +17,9 @@
 package org.axonframework.serialization;
 
 import org.axonframework.messaging.Message;
-import org.axonframework.messaging.MetaData;
+import org.axonframework.messaging.Metadata;
 import org.junit.jupiter.api.*;
 
-import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.Map;
 
@@ -36,122 +35,96 @@ class SerializedMessageTest {
 
     private final SerializedObject<String> serializedPayload =
             new SimpleSerializedObject<>("serializedPayload", String.class, "java.lang.Object", "1");
-    private final SerializedObject<String> serializedMetaData =
-            new SerializedMetaData<>("serializedMetaData", String.class);
+    private final SerializedObject<String> serializedMetadata =
+            new SerializedMetadata<>("serializedMetadata", String.class);
     private final Object deserializedPayload = new Object();
-    private final MetaData deserializedMetaData = MetaData.emptyInstance();
+    private final Metadata deserializedMetadata = Metadata.emptyInstance();
     private final Serializer serializer = mock(Serializer.class);
     private final String eventId = "eventId";
 
     @BeforeEach
     void setUp() {
-        when(serializer.deserialize(serializedMetaData)).thenReturn(deserializedMetaData);
+        when(serializer.deserialize(serializedMetadata)).thenReturn(deserializedMetadata);
         when(serializer.deserialize(serializedPayload)).thenReturn(deserializedPayload);
         when(serializer.classForType(isA(SerializedType.class))).thenReturn(Object.class);
-        when(serializer.getConverter()).thenReturn(new ChainingConverter());
+        when(serializer.getConverter()).thenReturn(new ChainingContentTypeConverter());
     }
 
     @Test
     void constructorLeavesSerializedObjectsSerialized() {
-        SerializedMessage<Object> testSubject =
-                new SerializedMessage<>(eventId, serializedPayload, serializedMetaData, serializer);
+        SerializedMessage testSubject =
+                new SerializedMessage(eventId, serializedPayload, serializedMetadata, serializer);
 
-        assertEquals(Object.class, testSubject.getPayloadType());
+        assertEquals(Object.class, testSubject.payloadType());
         assertFalse(testSubject.isPayloadDeserialized());
-        assertEquals(Object.class, testSubject.getPayload().getClass());
+        assertEquals(Object.class, testSubject.payload().getClass());
         assertTrue(testSubject.isPayloadDeserialized());
-        assertFalse(testSubject.isMetaDataDeserialized());
-        assertSame(MetaData.emptyInstance(), testSubject.getMetaData());
-        assertTrue(testSubject.isMetaDataDeserialized());
+        assertFalse(testSubject.isMetadataDeserialized());
+        assertSame(Metadata.emptyInstance(), testSubject.metadata());
+        assertTrue(testSubject.isMetadataDeserialized());
     }
 
     @Test
-    void withMetaDataReplacesOriginalMetaData() {
-        Map<String, Object> metaDataMap = Collections.singletonMap("key", "value");
-        MetaData metaData = MetaData.from(metaDataMap);
-        when(serializer.deserialize(serializedMetaData)).thenReturn(metaData);
+    void withMetadataReplacesOriginalMetadata() {
+        Map<String, String> metadataMap = Collections.singletonMap("key", "value");
+        Metadata metadata = Metadata.from(metadataMap);
+        when(serializer.deserialize(serializedMetadata)).thenReturn(metadata);
 
-        SerializedMessage<Object> testSubject =
-                new SerializedMessage<>(eventId, serializedPayload, serializedMetaData, serializer);
+        SerializedMessage testSubject =
+                new SerializedMessage(eventId, serializedPayload, serializedMetadata, serializer);
 
-        Message<Object> resultOne = testSubject.withMetaData(MetaData.emptyInstance());
-        Message<Object> resultTwo =
-                testSubject.withMetaData(MetaData.from(Collections.singletonMap("key", (Object) "otherValue")));
+        Message resultOne = testSubject.withMetadata(Metadata.emptyInstance());
+        Message resultTwo =
+                testSubject.withMetadata(Metadata.from(Collections.singletonMap("key", "otherValue")));
 
-        assertEquals(0, resultOne.getMetaData().size());
-        assertEquals(1, resultTwo.getMetaData().size());
+        assertEquals(0, resultOne.metadata().size());
+        assertEquals(1, resultTwo.metadata().size());
     }
 
     @Test
-    void andMetaDataAppendsToOriginalMetaData() {
-        Map<String, Object> metaDataMap = Collections.singletonMap("key", "value");
-        MetaData metaData = MetaData.from(metaDataMap);
-        when(serializer.deserialize(serializedMetaData)).thenReturn(metaData);
+    void andMetadataAppendsToOriginalMetadata() {
+        Map<String, String> metadataMap = Collections.singletonMap("key", "value");
+        Metadata metadata = Metadata.from(metadataMap);
+        when(serializer.deserialize(serializedMetadata)).thenReturn(metadata);
 
-        Message<Object> testSubject =
-                new SerializedMessage<>(eventId, serializedPayload, serializedMetaData, serializer);
+        Message testSubject =
+                new SerializedMessage(eventId, serializedPayload, serializedMetadata, serializer);
 
-        Message<Object> resultOne = testSubject.andMetaData(MetaData.emptyInstance());
-        assertEquals(1, resultOne.getMetaData().size());
-        assertEquals("value", resultOne.getMetaData().get("key"));
+        Message resultOne = testSubject.andMetadata(Metadata.emptyInstance());
+        assertEquals(1, resultOne.metadata().size());
+        assertEquals("value", resultOne.metadata().get("key"));
 
-        Message<Object> resultTwo =
-                testSubject.andMetaData(MetaData.from(Collections.singletonMap("key", (Object) "otherValue")));
-        assertEquals(1, resultTwo.getMetaData().size());
-        assertEquals("otherValue", resultTwo.getMetaData().get("key"));
-    }
-
-    @Test
-    void serializePayloadImmediatelyAfterConstructionReturnsOriginalPayload() {
-        SerializedMessage<Object> testSubject =
-                new SerializedMessage<>(eventId, serializedPayload, serializedMetaData, serializer);
-
-        SerializedObject<byte[]> result = testSubject.serializePayload(serializer, byte[].class);
-        assertArrayEquals("serializedPayload".getBytes(StandardCharsets.UTF_8), result.getData());
-        // this call is allowed
-        verify(serializer, atLeast(0)).classForType(isA(SerializedType.class));
-        verify(serializer, atLeast(0)).getConverter();
-        verifyNoMoreInteractions(serializer);
-    }
-
-    @Test
-    void serializeMetaDataImmediatelyAfterConstructionReturnsOriginalMetaData() {
-        SerializedMessage<Object> testSubject =
-                new SerializedMessage<>(eventId, serializedPayload, serializedMetaData, serializer);
-
-        SerializedObject<byte[]> result = testSubject.serializeMetaData(serializer, byte[].class);
-        assertArrayEquals("serializedMetaData".getBytes(StandardCharsets.UTF_8), result.getData());
-        // this call is allowed
-        verify(serializer, atLeast(0)).classForType(isA(SerializedType.class));
-        verify(serializer, atLeast(0)).getConverter();
-        verifyNoMoreInteractions(serializer);
+        Message resultTwo =
+                testSubject.andMetadata(Metadata.from(Collections.singletonMap("key", "otherValue")));
+        assertEquals(1, resultTwo.metadata().size());
+        assertEquals("otherValue", resultTwo.metadata().get("key"));
     }
 
     @Test
     void rethrowSerializationExceptionOnGetPayload() {
         SerializationException serializationException = new SerializationException("test message");
-        when(serializer.deserialize(serializedMetaData)).thenThrow(serializationException);
+        when(serializer.deserialize(serializedMetadata)).thenThrow(serializationException);
         when(serializer.deserialize(serializedPayload)).thenThrow(serializationException);
 
-        SerializedMessage<Object> testSubject =
-                new SerializedMessage<>(eventId, serializedPayload, serializedMetaData, serializer);
+        SerializedMessage testSubject =
+                new SerializedMessage(eventId, serializedPayload, serializedMetadata, serializer);
 
-        SerializationException result = assertThrows(SerializationException.class, testSubject::getPayload);
+        SerializationException result = assertThrows(SerializationException.class, testSubject::payload);
         assertEquals("Error while deserializing payload of message " + eventId, result.getMessage());
         assertSame(serializationException, result.getCause());
     }
 
     @Test
-    void rethrowSerializationExceptionOnGetMetaData() {
+    void rethrowSerializationExceptionOnMetadata() {
         SerializationException serializationException = new SerializationException("test message");
-        when(serializer.deserialize(serializedMetaData)).thenThrow(serializationException);
+        when(serializer.deserialize(serializedMetadata)).thenThrow(serializationException);
         when(serializer.deserialize(serializedPayload)).thenThrow(serializationException);
 
-        SerializedMessage<Object> testSubject =
-                new SerializedMessage<>(eventId, serializedPayload, serializedMetaData, serializer);
+        SerializedMessage testSubject =
+                new SerializedMessage(eventId, serializedPayload, serializedMetadata, serializer);
 
-        SerializationException result = assertThrows(SerializationException.class, testSubject::getMetaData);
-        assertEquals("Error while deserializing meta data of message " + eventId, result.getMessage());
+        SerializationException result = assertThrows(SerializationException.class, testSubject::metadata);
+        assertEquals("Error while deserializing metadata of message " + eventId, result.getMessage());
         assertSame(serializationException, result.getCause());
     }
 }

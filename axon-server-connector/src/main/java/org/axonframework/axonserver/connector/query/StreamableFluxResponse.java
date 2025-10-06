@@ -1,11 +1,11 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2023. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -48,7 +48,7 @@ class StreamableFluxResponse implements StreamableResponse {
      * @param clientId        the identifier of the client
      * @param <T>             the type of items to be sent
      */
-    public <T> StreamableFluxResponse(Flux<QueryResponseMessage<T>> result,
+    public <T> StreamableFluxResponse(Flux<QueryResponseMessage> result,
                                       ReplyChannel<QueryResponse> responseHandler,
                                       QuerySerializer serializer,
                                       String requestId,

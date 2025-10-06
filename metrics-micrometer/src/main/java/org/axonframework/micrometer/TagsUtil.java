@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2023. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -48,14 +48,14 @@ public class TagsUtil {
     /**
      * The function for creating the Micrometer {@link Tag}s based on the message payload type.
      */
-    public static final Function<Message<?>, Iterable<Tag>> PAYLOAD_TYPE_TAGGER_FUNCTION = message -> Tags.of(
+    public static final Function<Message, Iterable<Tag>> PAYLOAD_TYPE_TAGGER_FUNCTION = message -> Tags.of(
             PAYLOAD_TYPE_TAG,
-            message.getPayloadType().getSimpleName());
+            message.payloadType().getSimpleName());
 
     /**
      * The function for creating the Micrometer {@link Tag}s based on the message metadata.
      */
-    public static final Function<Message<?>, Iterable<Tag>> META_DATA_TAGGER_FUNCTION = message -> message
-            .getMetaData().entrySet().stream().map(it -> Tag.of(it.getKey(), it.getValue().toString()))
+    public static final Function<Message, Iterable<Tag>> METADATA_TAGGER_FUNCTION = message -> message
+            .metadata().entrySet().stream().map(it -> Tag.of(it.getKey(), it.getValue().toString()))
             .collect(Collectors.toList());
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ import org.axonframework.common.AxonConfigurationException;
 import org.axonframework.eventhandling.EventMessage;
 import org.axonframework.monitoring.MessageMonitor;
 import org.junit.jupiter.api.*;
+import org.mockito.Mockito;
 
 import java.time.Instant;
 import java.util.Arrays;
@@ -58,16 +59,16 @@ class EventProcessorLatencyMonitorTest {
         EventProcessorLatencyMonitor testSubject = testSubjectBuilder.build();
 
         //noinspection unchecked
-        EventMessage<String> firstEventMessage = mock(EventMessage.class);
-        when(firstEventMessage.getTimestamp()).thenReturn(Instant.ofEpochMilli(0));
-        when(firstEventMessage.getPayloadType()).thenReturn(String.class);
+        EventMessage firstEventMessage = mock(EventMessage.class);
+        when(firstEventMessage.timestamp()).thenReturn(Instant.ofEpochMilli(0));
+        Mockito.<Class<?>>when(firstEventMessage.payloadType()).thenReturn(String.class);
 
         //noinspection unchecked
-        EventMessage<Integer> secondEventMessage = mock(EventMessage.class);
-        when(secondEventMessage.getTimestamp()).thenReturn(Instant.ofEpochMilli(1000));
-        when(secondEventMessage.getPayloadType()).thenReturn(Integer.class);
+        EventMessage secondEventMessage = mock(EventMessage.class);
+        when(secondEventMessage.timestamp()).thenReturn(Instant.ofEpochMilli(1000));
+        Mockito.<Class<?>>when(secondEventMessage.payloadType()).thenReturn(Integer.class);
 
-        Map<? super EventMessage<?>, MessageMonitor.MonitorCallback> callbacks = testSubject
+        Map<? super EventMessage, MessageMonitor.MonitorCallback> callbacks = testSubject
                 .onMessagesIngested(Arrays.asList(firstEventMessage, secondEventMessage));
         callbacks.get(firstEventMessage).reportSuccess();
 
@@ -78,20 +79,20 @@ class EventProcessorLatencyMonitorTest {
     @Test
     void messagesWithPayloadAsCustomTag() {
         EventProcessorLatencyMonitor testSubject = testSubjectBuilder.tagsBuilder(
-                message -> Tags.of(TagsUtil.PAYLOAD_TYPE_TAG, message.getPayloadType().getSimpleName())
+                message -> Tags.of(TagsUtil.PAYLOAD_TYPE_TAG, message.payloadType().getSimpleName())
         ).build();
 
         //noinspection unchecked
-        EventMessage<String> firstEventMessage = mock(EventMessage.class);
-        when(firstEventMessage.getTimestamp()).thenReturn(Instant.now());
-        when(firstEventMessage.getPayloadType()).thenReturn(String.class);
+        EventMessage firstEventMessage = mock(EventMessage.class);
+        when(firstEventMessage.timestamp()).thenReturn(Instant.now());
+        Mockito.<Class<?>>when(firstEventMessage.payloadType()).thenReturn(String.class);
 
         //noinspection unchecked
-        EventMessage<Integer> secondEventMessage = mock(EventMessage.class);
-        when(secondEventMessage.getTimestamp()).thenReturn(Instant.now().minusMillis(1000));
-        when(secondEventMessage.getPayloadType()).thenReturn(Integer.class);
+        EventMessage secondEventMessage = mock(EventMessage.class);
+        when(secondEventMessage.timestamp()).thenReturn(Instant.now().minusMillis(1000));
+        Mockito.<Class<?>>when(secondEventMessage.payloadType()).thenReturn(Integer.class);
 
-        Map<? super EventMessage<?>, MessageMonitor.MonitorCallback> callbacks = testSubject
+        Map<? super EventMessage, MessageMonitor.MonitorCallback> callbacks = testSubject
                 .onMessagesIngested(Arrays.asList(firstEventMessage, secondEventMessage));
         callbacks.get(firstEventMessage).reportSuccess();
 
@@ -106,20 +107,20 @@ class EventProcessorLatencyMonitorTest {
     @Test
     void failureMessageWithPayloadAsCustomTag() {
         EventProcessorLatencyMonitor testSubject = testSubjectBuilder.tagsBuilder(
-                message -> Tags.of(TagsUtil.PAYLOAD_TYPE_TAG, message.getPayloadType().getSimpleName())
+                message -> Tags.of(TagsUtil.PAYLOAD_TYPE_TAG, message.payloadType().getSimpleName())
         ).build();
 
         //noinspection unchecked
-        EventMessage<String> firstEventMessage = mock(EventMessage.class);
-        when(firstEventMessage.getTimestamp()).thenReturn(Instant.now().minusMillis(1000));
-        when(firstEventMessage.getPayloadType()).thenReturn(String.class);
+        EventMessage firstEventMessage = mock(EventMessage.class);
+        when(firstEventMessage.timestamp()).thenReturn(Instant.now().minusMillis(1000));
+        Mockito.<Class<?>>when(firstEventMessage.payloadType()).thenReturn(String.class);
 
         //noinspection unchecked
-        EventMessage<Integer> secondEventMessage = mock(EventMessage.class);
-        when(secondEventMessage.getTimestamp()).thenReturn(Instant.now());
-        when(secondEventMessage.getPayloadType()).thenReturn(Integer.class);
+        EventMessage secondEventMessage = mock(EventMessage.class);
+        when(secondEventMessage.timestamp()).thenReturn(Instant.now());
+        Mockito.<Class<?>>when(secondEventMessage.payloadType()).thenReturn(Integer.class);
 
-        Map<? super EventMessage<?>, MessageMonitor.MonitorCallback> callbacks = testSubject
+        Map<? super EventMessage, MessageMonitor.MonitorCallback> callbacks = testSubject
                 .onMessagesIngested(Arrays.asList(firstEventMessage, secondEventMessage));
         callbacks.get(firstEventMessage).reportFailure(null);
 

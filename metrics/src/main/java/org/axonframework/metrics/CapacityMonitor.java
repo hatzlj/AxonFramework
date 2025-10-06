@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2023. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,7 +29,7 @@ import org.axonframework.monitoring.MessageMonitor;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
-import javax.annotation.Nonnull;
+import jakarta.annotation.Nonnull;
 
 /**
  * Calculates capacity by tracking, within the configured time window, the average message processing time
@@ -45,7 +45,7 @@ import javax.annotation.Nonnull;
  * @author Marijn van Zelst
  * @since 3.0
  */
-public class CapacityMonitor implements MessageMonitor<Message<?>>, MetricSet {
+public class CapacityMonitor implements MessageMonitor<Message>, MetricSet {
 
     private final Histogram processedDurationHistogram;
     private final TimeUnit timeUnit;
@@ -88,7 +88,7 @@ public class CapacityMonitor implements MessageMonitor<Message<?>>, MetricSet {
     }
 
     @Override
-    public MonitorCallback onMessageIngested(@Nonnull Message<?> message) {
+    public MonitorCallback onMessageIngested(@Nonnull Message message) {
         final long start = clock.getTime();
         return new MonitorCallback() {
             @Override

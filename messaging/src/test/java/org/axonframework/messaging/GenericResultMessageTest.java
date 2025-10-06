@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,8 +16,8 @@
 
 package org.axonframework.messaging;
 
-import org.axonframework.serialization.SerializedObject;
-import org.axonframework.serialization.json.JacksonSerializer;
+import jakarta.annotation.Nullable;
+import org.axonframework.common.ObjectUtils;
 import org.junit.jupiter.api.*;
 
 import static org.axonframework.messaging.GenericResultMessage.asResultMessage;
@@ -28,27 +28,28 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * @author Milan Savic
  */
-class GenericResultMessageTest {
+class GenericResultMessageTest extends MessageTestSuite<ResultMessage> {
+
+    @Override
+    protected ResultMessage buildDefaultMessage() {
+        return new GenericResultMessage(new GenericMessage(
+                TEST_IDENTIFIER, TEST_TYPE, TEST_PAYLOAD, TEST_PAYLOAD_TYPE, TEST_METADATA
+        ));
+    }
+
+    @Override
+    protected <P> ResultMessage buildMessage(@Nullable P payload) {
+        return new GenericResultMessage(new MessageType(ObjectUtils.nullSafeTypeOf(payload)), payload);
+    }
 
     @Test
     void exceptionalResult() {
         Throwable t = new Throwable("oops");
-        ResultMessage<?> resultMessage = asResultMessage(t);
+        ResultMessage resultMessage = asResultMessage(t);
         try {
-            resultMessage.getPayload();
+            resultMessage.payload();
         } catch (IllegalPayloadAccessException ipae) {
             assertEquals(t, ipae.getCause());
         }
-    }
-
-    @Test
-    void exceptionSerialization() {
-        Throwable expected = new Throwable("oops");
-        ResultMessage<?> resultMessage = asResultMessage(expected);
-        JacksonSerializer jacksonSerializer = JacksonSerializer.builder().build();
-        SerializedObject<String> serializedObject =
-                resultMessage.serializeExceptionResult(jacksonSerializer, String.class);
-        RemoteExceptionDescription actual = jacksonSerializer.deserialize(serializedObject);
-        assertEquals("java.lang.Throwable: oops", actual.getDescriptions().get(0));
     }
 }

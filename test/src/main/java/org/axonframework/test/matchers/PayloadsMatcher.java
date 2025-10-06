@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,7 +30,7 @@ import java.util.List;
  * @author Allard Buijze
  * @since 2.0
  */
-public class PayloadsMatcher extends BaseMatcher<List<Message<?>>> {
+public class PayloadsMatcher extends BaseMatcher<List<Message>> {
     private final Matcher<? extends Iterable<?>> matcher;
 
     /**
@@ -50,7 +50,7 @@ public class PayloadsMatcher extends BaseMatcher<List<Message<?>>> {
         List<Object> payloads = new ArrayList<>();
         for (Object listItem : (List) item) {
             if (Message.class.isInstance(listItem)) {
-                payloads.add(((Message) listItem).getPayload());
+                payloads.add(((Message) listItem).payload());
             } else {
                 payloads.add(item);
             }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@ import org.axonframework.messaging.Message;
 import org.axonframework.tracing.SpanAttributesProvider;
 
 import java.util.Map;
-import javax.annotation.Nonnull;
+import jakarta.annotation.Nonnull;
 
 import static java.util.Collections.singletonMap;
 
@@ -33,7 +33,7 @@ import static java.util.Collections.singletonMap;
 public class MessageIdSpanAttributesProvider implements SpanAttributesProvider {
 
     @Override
-    public @Nonnull Map<String, String> provideForMessage(@Nonnull Message<?> message) {
-        return singletonMap("axon_message_id", message.getIdentifier());
+    public @Nonnull Map<String, String> provideForMessage(@Nonnull Message message) {
+        return singletonMap("axon_message_id", message.identifier());
     }
 }

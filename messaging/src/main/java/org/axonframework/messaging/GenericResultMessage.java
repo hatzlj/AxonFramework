@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,119 +16,156 @@
 
 package org.axonframework.messaging;
 
-import org.axonframework.serialization.SerializedObject;
-import org.axonframework.serialization.Serializer;
+import jakarta.annotation.Nonnull;
+import jakarta.annotation.Nullable;
+import org.axonframework.common.ObjectUtils;
+import org.axonframework.queryhandling.QueryResponseMessage;
+import org.axonframework.serialization.Converter;
 
+import java.lang.reflect.Type;
 import java.util.Map;
 import java.util.Optional;
-import javax.annotation.Nonnull;
 
 /**
- * Generic implementation of {@link ResultMessage}.
+ * Generic implementation of {@link ResultMessage} interface.
  *
  * @author Milan Savic
- * @since 4.0
+ * @author Steven van Beelen
+ * @since 4.0.0
  */
-public class GenericResultMessage<R> extends MessageDecorator<R> implements ResultMessage<R> {
-
-    private static final long serialVersionUID = -9086395619674962782L;
+public class GenericResultMessage extends MessageDecorator implements ResultMessage {
 
     private final Throwable exception;
 
     /**
-     * Creates a ResultMessage with the given {@code result} as the payload.
+     * Constructs a {@link GenericResultMessage} for the given {@code type} and {@code result}.
+     * <p>
+     * Uses the correlation data of the current Unit of Work, if present.
      *
-     * @param result the payload for the Message
+     * @param type   The {@link MessageType type} for this {@link ResultMessage}.
+     * @param result The result for this {@link ResultMessage}.
      */
-    public GenericResultMessage(R result) {
-        this(result, MetaData.emptyInstance());
+    public GenericResultMessage(@Nonnull MessageType type,
+                                @Nullable Object result) {
+        this(type, result, Metadata.emptyInstance());
     }
 
     /**
-     * Creates a ResultMessage with the given {@code exception}.
+     * Constructs a {@link GenericResultMessage} for the given {@code type} and {@code exception}.
+     * <p>
+     * Uses the correlation data of the current Unit of Work, if present.
      *
-     * @param exception the Exception describing the cause of an error
+     * @param type      The {@link MessageType type} for this {@link ResultMessage}.
+     * @param exception The {@link Throwable} describing the error representing the response of this
+     *                  {@link ResultMessage}.
      */
-    public GenericResultMessage(Throwable exception) {
-        this(exception, MetaData.emptyInstance());
+    public GenericResultMessage(@Nonnull MessageType type,
+                                @Nonnull Throwable exception) {
+        this(type, exception, Metadata.emptyInstance());
     }
 
     /**
-     * Creates a ResultMessage with the given {@code result} as the payload and {@code metaData} as the meta data.
+     * Constructs a {@code GenericResultMessage} for the given {@code type}, {@code result}, and {@code metadata}.
      *
-     * @param result   the payload for the Message
-     * @param metaData the meta data for the Message
+     * @param type     The {@link MessageType type} for this {@link ResultMessage}.
+     * @param result   The result for this {@link ResultMessage}.
+     * @param metadata The metadata for this {@link ResultMessage}.
      */
-    public GenericResultMessage(R result, Map<String, ?> metaData) {
-        this(new GenericMessage<>(result, metaData));
+    public GenericResultMessage(@Nonnull MessageType type,
+                                @Nullable Object result,
+                                @Nonnull Map<String, String> metadata) {
+        this(new GenericMessage(type, result, metadata));
     }
 
     /**
-     * Creates a ResultMessage with the given {@code exception} and {@code metaData}.
+     * Constructs a {@code GenericResultMessage} for the given {@code type}, {@code exception}, and {@code metadata}.
      *
-     * @param exception the Exception describing the cause of an error
-     * @param metaData  the meta data for the Message
+     * @param type      The {@link MessageType type} for this {@link ResultMessage}.
+     * @param exception The {@link Throwable} describing the error representing the response of this
+     *                  {@link ResultMessage}.
+     * @param metadata  The metadata for this {@link ResultMessage}.
      */
-    public GenericResultMessage(Throwable exception, Map<String, ?> metaData) {
-        this(new GenericMessage<>(null, metaData), exception);
+    public GenericResultMessage(@Nonnull MessageType type,
+                                @Nonnull Throwable exception,
+                                @Nonnull Map<String, String> metadata) {
+        this(new GenericMessage(type, null, metadata), exception);
     }
 
     /**
-     * Creates a new ResultMessage with given {@code delegate} message.
+     * Constructs a {@code GenericResultMessage} for the given {@code delegate}, intended to reconstruct another
+     * {@link ResultMessage}.
+     * <p>
+     * Unlike the other constructors, this constructor will not attempt to retrieve any correlation data from the Unit
+     * of Work.
      *
-     * @param delegate the message delegate
+     * @param delegate The {@link Message} containing {@link Message#payload() payload}, {@link Message#type() type},
+     *                 {@link Message#identifier() identifier} and {@link Message#metadata() metadata} for the
+     *                 {@link QueryResponseMessage} to reconstruct.
      */
-    public GenericResultMessage(Message<R> delegate) {
+    public GenericResultMessage(@Nonnull Message delegate) {
         this(delegate, GenericResultMessage.findExceptionResult(delegate));
     }
 
     /**
-     * Creates a ResultMessage with given {@code delegate} message and {@code exception}.
+     * Constructs a {@code GenericResultMessage} for the given {@code delegate} and {@code exception} as a cause for the
+     * failure, intended to reconstruct another {@link ResultMessage}.
+     * <p>
+     * Unlike the other constructors, this constructor will not attempt to retrieve any correlation data from the Unit
+     * of Work.
      *
-     * @param delegate  the Message delegate
-     * @param exception the Exception describing the cause of an error
+     * @param delegate  The {@link Message} containing {@link Message#payload() payload}, {@link Message#type() type},
+     *                  {@link Message#identifier() identifier} and {@link Message#metadata() metadata} for the
+     *                  {@link QueryResponseMessage} to reconstruct.
+     * @param exception The {@link Throwable} describing the error representing the response of this
+     *                  {@link ResultMessage}.
      */
-    public GenericResultMessage(Message<R> delegate, Throwable exception) {
+    public GenericResultMessage(@Nonnull Message delegate,
+                                @Nullable Throwable exception) {
         super(delegate);
         this.exception = exception;
     }
 
     /**
-     * Returns the given {@code result} as a {@link ResultMessage} instance. If {@code result} already implements {@link
-     * ResultMessage}, it is returned as-is. If {@code result} implements {@link Message}, payload and meta data will be
-     * used to construct new {@link GenericResultMessage}. Otherwise, the given {@code result} is wrapped into a {@link
-     * GenericResultMessage} as its payload.
+     * Returns the given {@code result} as a {@link ResultMessage} instance. If {@code result} already implements
+     * {@link ResultMessage}, it is returned as-is. If {@code result} implements {@link Message}, payload and meta data
+     * will be used to construct new {@code GenericResultMessage}. Otherwise, the given {@code result} is wrapped into a
+     * {@code GenericResultMessage} as its payload.
      *
      * @param result the command result to be wrapped as {@link ResultMessage}
-     * @param <T>    The type of the payload contained in returned Message
-     * @return a Message containing given {@code result} as payload, or {@code result} if already
-     * implements {@link ResultMessage}
+     * @return a Message containing given {@code result} as payload, or {@code result} if already implements
+     * {@link ResultMessage}
+     * @deprecated In favor of using the constructor, as we intend to enforce thinking about the
+     * {@link MessageType type}.
      */
-    @SuppressWarnings("unchecked")
-    public static <T> ResultMessage<T> asResultMessage(Object result) {
-        if (result instanceof ResultMessage) {
-            return (ResultMessage<T>) result;
-        } else if (result instanceof Message) {
-            Message<?> resultMessage = (Message<?>) result;
-            return (ResultMessage<T>) new GenericResultMessage<>(resultMessage);
+    @Deprecated
+    public static ResultMessage asResultMessage(Object result) {
+        if (result instanceof ResultMessage r) {
+            return r;
         }
-        return new GenericResultMessage<>((T) result);
+        if (result instanceof Message resultMessage) {
+            return new GenericResultMessage(resultMessage);
+        }
+        MessageType type = result == null ? new MessageType("empty.result") : new MessageType(result.getClass());
+
+        return new GenericResultMessage(type, result);
     }
 
     /**
      * Creates a ResultMessage with the given {@code exception} result.
      *
      * @param exception the Exception describing the cause of an error
-     * @param <T>       the type of payload
      * @return a message containing exception result
+     * @deprecated In favor of using the constructor, as we intend to enforce thinking about the
+     * {@link MessageType type}.
      */
-    public static <T> ResultMessage<T> asResultMessage(Throwable exception) {
-        return new GenericResultMessage<>(exception);
+    @Deprecated
+    public static ResultMessage asResultMessage(Throwable exception) {
+        return new GenericResultMessage(new MessageType(exception.getClass()), exception);
     }
 
-    private static <R> Throwable findExceptionResult(Message<R> delegate) {
-        if (delegate instanceof ResultMessage && ((ResultMessage<R>) delegate).isExceptional()) {
-            return ((ResultMessage<R>) delegate).exceptionResult();
+    private static Throwable findExceptionResult(Message delegate) {
+        if (delegate instanceof ResultMessage && ((ResultMessage) delegate).isExceptional()) {
+            return ((ResultMessage) delegate).exceptionResult();
         }
         return null;
     }
@@ -144,33 +181,44 @@ public class GenericResultMessage<R> extends MessageDecorator<R> implements Resu
     }
 
     @Override
-    public <S> SerializedObject<S> serializePayload(Serializer serializer, Class<S> expectedRepresentation) {
-        if (isExceptional()) {
-            return serializer.serialize(exceptionDetails().orElse(null), expectedRepresentation);
+    @Nonnull
+    public ResultMessage withMetadata(@Nonnull Map<String, String> metadata) {
+        return new GenericResultMessage(delegate().withMetadata(metadata), exception);
+    }
+
+    @Override
+    @Nonnull
+    public ResultMessage andMetadata(@Nonnull Map<String, String> metadata) {
+        return new GenericResultMessage(delegate().andMetadata(metadata), exception);
+    }
+
+    @Override
+    @Nonnull
+    public ResultMessage withConvertedPayload(@Nonnull Type type, @Nonnull Converter converter) {
+        Object convertedPayload = payloadAs(type, converter);
+        if (ObjectUtils.nullSafeTypeOf(convertedPayload).isAssignableFrom(payloadType())) {
+            return this;
         }
-        return super.serializePayload(serializer, expectedRepresentation);
-    }
-
-    @Override
-    public GenericResultMessage<R> withMetaData(@Nonnull Map<String, ?> metaData) {
-        return new GenericResultMessage<>(getDelegate().withMetaData(metaData), exception);
-    }
-
-    @Override
-    public GenericResultMessage<R> andMetaData(@Nonnull Map<String, ?> metaData) {
-        return new GenericResultMessage<>(getDelegate().andMetaData(metaData), exception);
+        Message delegate = delegate();
+        Message converted = new GenericMessage(delegate.identifier(),
+                                                    delegate.type(),
+                                                    convertedPayload,
+                                                    delegate.metadata());
+        return optionalExceptionResult().isPresent()
+                ? new GenericResultMessage(converted, optionalExceptionResult().get())
+                : new GenericResultMessage(converted);
     }
 
     @Override
     protected void describeTo(StringBuilder stringBuilder) {
         stringBuilder.append("payload={")
-                     .append(isExceptional() ? null : getPayload())
+                     .append(isExceptional() ? null : payload())
                      .append('}')
                      .append(", metadata={")
-                     .append(getMetaData())
+                     .append(metadata())
                      .append('}')
                      .append(", messageIdentifier='")
-                     .append(getIdentifier())
+                     .append(identifier())
                      .append('\'')
                      .append(", exception='")
                      .append(exception)
@@ -182,9 +230,8 @@ public class GenericResultMessage<R> extends MessageDecorator<R> implements Resu
         return "GenericResultMessage";
     }
 
-    @SuppressWarnings("unchecked")
     @Override
-    public R getPayload() {
+    public Object payload() {
         if (isExceptional()) {
             throw new IllegalPayloadAccessException(
                     "This result completed exceptionally, payload is not available. "
@@ -192,6 +239,6 @@ public class GenericResultMessage<R> extends MessageDecorator<R> implements Resu
                     exception
             );
         }
-        return super.getPayload();
+        return super.payload();
     }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,8 @@ package org.axonframework.tracing.opentelemetry;
 
 import org.axonframework.eventhandling.EventMessage;
 import org.axonframework.eventhandling.GenericEventMessage;
+import org.axonframework.messaging.GenericMessage;
+import org.axonframework.messaging.MessageType;
 import org.junit.jupiter.api.*;
 
 import java.util.Collections;
@@ -29,10 +31,9 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class MetadataContextGetterTest {
 
-    private final EventMessage<Object> message = GenericEventMessage
-            .asEventMessage("MyEvent")
-            .andMetaData(Collections.singletonMap("myKeyOne", "myValueTwo"))
-            .andMetaData(Collections.singletonMap("MyKeyTwo", 2));
+    private final EventMessage message = asEventMessage("MyEvent")
+            .andMetadata(Collections.singletonMap("myKeyOne", "myValueTwo"))
+            .andMetadata(Collections.singletonMap("MyKeyTwo", "2"));
 
     @Test
     void shouldReceiveMetadataKeysFromMessage() {
@@ -51,5 +52,12 @@ class MetadataContextGetterTest {
     @Test
     void shouldGetNullFromNullMessage() {
         assertNull(MetadataContextGetter.INSTANCE.get(null, "myKeyOne"));
+    }
+
+    private static <P> EventMessage asEventMessage(P event) {
+        return new GenericEventMessage(
+                new GenericMessage(new MessageType(event.getClass()), event),
+                () -> GenericEventMessage.clock.instant()
+        );
     }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@ import org.axonframework.tracing.SpanAttributesProvider;
 
 import java.util.HashMap;
 import java.util.Map;
-import javax.annotation.Nonnull;
+import jakarta.annotation.Nonnull;
 
 /**
  * Adds the metadata of the message to the span as attributes.
@@ -34,9 +34,9 @@ import javax.annotation.Nonnull;
 public class MetadataSpanAttributesProvider implements SpanAttributesProvider {
 
     @Override
-    public @Nonnull Map<String, String> provideForMessage(@Nonnull Message<?> message) {
+    public @Nonnull Map<String, String> provideForMessage(@Nonnull Message message) {
         Map<String, String> map = new HashMap<>();
-        message.getMetaData().forEach((key, value) -> map.put("axon_metadata_" + key, value.toString()));
+        message.metadata().forEach((key, value) -> map.put("axon_metadata_" + key, value.toString()));
         return map;
     }
 }

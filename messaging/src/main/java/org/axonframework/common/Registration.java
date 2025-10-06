@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2018. Axon Framework
+ * Copyright (c) 2010-2023. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,17 +23,7 @@ package org.axonframework.common;
  * @since 3.0
  */
 @FunctionalInterface
-public interface Registration extends AutoCloseable {
-
-    /**
-     * Cancels this Registration. By default this simply calls {@link #cancel()}.
-     * <p/>
-     * {@inheritDoc}
-     */
-    @Override
-    default void close() {
-        cancel();
-    }
+public interface Registration {
 
     /**
      * Cancels this Registration. If the Registration was already cancelled, no action is taken.

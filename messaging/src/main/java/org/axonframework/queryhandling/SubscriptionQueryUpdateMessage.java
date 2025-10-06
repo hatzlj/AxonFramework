@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,23 +16,45 @@
 
 package org.axonframework.queryhandling;
 
+import jakarta.annotation.Nonnull;
+import org.axonframework.common.TypeReference;
 import org.axonframework.messaging.ResultMessage;
+import org.axonframework.serialization.Converter;
 
+import java.lang.reflect.Type;
 import java.util.Map;
-import javax.annotation.Nonnull;
 
 /**
- * Message which holds incremental update of an subscription query.
+ * A {@link ResultMessage} implementation that holds incremental updates of a subscription query.
  *
- * @param <U> type of incremental update
  * @author Milan Savic
- * @since 3.3
+ * @since 3.3.0
  */
-public interface SubscriptionQueryUpdateMessage<U> extends ResultMessage<U> {
+public interface SubscriptionQueryUpdateMessage extends ResultMessage {
 
     @Override
-    SubscriptionQueryUpdateMessage<U> withMetaData(@Nonnull Map<String, ?> metaData);
+    @Nonnull
+    SubscriptionQueryUpdateMessage withMetadata(@Nonnull Map<String, String> metadata);
 
     @Override
-    SubscriptionQueryUpdateMessage<U> andMetaData(@Nonnull Map<String, ?> metaData);
+    @Nonnull
+    SubscriptionQueryUpdateMessage andMetadata(@Nonnull Map<String, String> metadata);
+
+    @Override
+    @Nonnull
+    default SubscriptionQueryUpdateMessage withConvertedPayload(@Nonnull Class<?> type,
+                                                                       @Nonnull Converter converter) {
+        return withConvertedPayload((Type) type, converter);
+    }
+
+    @Override
+    @Nonnull
+    default SubscriptionQueryUpdateMessage withConvertedPayload(@Nonnull TypeReference<?> type,
+                                                                       @Nonnull Converter converter) {
+        return withConvertedPayload(type.getType(), converter);
+    }
+
+    @Override
+    @Nonnull
+    SubscriptionQueryUpdateMessage withConvertedPayload(@Nonnull Type type, @Nonnull Converter converter);
 }

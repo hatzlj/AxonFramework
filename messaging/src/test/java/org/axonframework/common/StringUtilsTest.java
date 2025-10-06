@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2023. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -69,5 +69,18 @@ class StringUtilsTest {
         String partialLowercase = "fOo";
         assertEquals(partialLowercase, lowerCaseFirstCharacterOf(partialUppercase));
         assertEquals(partialLowercase, lowerCaseFirstCharacterOf(partialLowercase));
+    }
+
+    @Test
+    void capitalizeReturnsStringWithFirstCharacterUppercase() {
+        String allLowercase = "foo";
+        String capitalizedOutputOfAllLowercase = "Foo";
+        assertEquals(capitalizedOutputOfAllLowercase, StringUtils.capitalize(allLowercase));
+        assertEquals(capitalizedOutputOfAllLowercase, StringUtils.capitalize(capitalizedOutputOfAllLowercase));
+
+        String partialUppercase = "fOo";
+        String partialUppercaseOutput = "FOo";
+        assertEquals(partialUppercaseOutput, StringUtils.capitalize(partialUppercase));
+        assertEquals(partialUppercaseOutput, StringUtils.capitalize(partialUppercaseOutput));
     }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,23 +16,44 @@
 
 package org.axonframework.commandhandling;
 
+import jakarta.annotation.Nonnull;
+import org.axonframework.common.TypeReference;
 import org.axonframework.messaging.ResultMessage;
+import org.axonframework.serialization.Converter;
 
+import java.lang.reflect.Type;
 import java.util.Map;
-import javax.annotation.Nonnull;
 
 /**
- * Message that represents a result from handling a {@link CommandMessage}.
+ * A {@link ResultMessage} that represents a result from handling a {@link CommandMessage}.
  *
- * @param <R> The type of payload contained in this Message
  * @author Milan Savic
- * @since 4.0
+ * @since 4.0.0
  */
-public interface CommandResultMessage<R> extends ResultMessage<R> {
+public interface CommandResultMessage extends ResultMessage {
 
     @Override
-    CommandResultMessage<R> withMetaData(@Nonnull Map<String, ?> metaData);
+    @Nonnull
+    CommandResultMessage withMetadata(@Nonnull Map<String, String> metadata);
 
     @Override
-    CommandResultMessage<R> andMetaData(@Nonnull Map<String, ?> metaData);
+    @Nonnull
+    CommandResultMessage andMetadata(@Nonnull Map<String, String> metadata);
+
+    @Override
+    @Nonnull
+    default CommandResultMessage withConvertedPayload(@Nonnull Class<?> type, @Nonnull Converter converter) {
+        return withConvertedPayload((Type) type, converter);
+    }
+
+    @Override
+    @Nonnull
+    default CommandResultMessage withConvertedPayload(@Nonnull TypeReference<?> type,
+                                                      @Nonnull Converter converter) {
+        return withConvertedPayload(type.getType(), converter);
+    }
+
+    @Override
+    @Nonnull
+    CommandResultMessage withConvertedPayload(@Nonnull Type type, @Nonnull Converter converter);
 }

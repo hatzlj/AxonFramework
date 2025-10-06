@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2023. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -43,13 +43,13 @@ class InboundEventMessageChannelAdapterTest {
     void messagePayloadIsPublished() {
         testSubject = new InboundEventMessageChannelAdapter();
         StubDomainEvent event = new StubDomainEvent();
-        testSubject.handleMessage(new GenericMessage<Object>(event));
+        testSubject.handleMessage(new GenericMessage(event));
 
         verify(mockEventBus, never()).publish(isA(EventMessage.class));
 
         testSubject.subscribe(mockEventBus::publish);
 
-        testSubject.handleMessage(new GenericMessage<Object>(event));
+        testSubject.handleMessage(new GenericMessage(event));
 
         verify(mockEventBus).publish(ArgumentMatchers.anyList());
     }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2018. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,52 +16,58 @@
 
 package org.axonframework.eventhandling.replay;
 
-import org.axonframework.eventhandling.*;
-import org.axonframework.eventhandling.GlobalSequenceTrackingToken;
-import org.axonframework.eventhandling.TrackingToken;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
+import org.axonframework.eventhandling.annotations.AnnotatedEventHandlingComponent;
+import org.axonframework.eventhandling.annotations.EventHandler;
+import org.axonframework.eventhandling.processors.streaming.token.GlobalSequenceTrackingToken;
+import org.axonframework.eventhandling.processors.streaming.token.ReplayToken;
+import org.axonframework.eventhandling.processors.streaming.token.TrackingToken;
+import org.axonframework.messaging.ClassBasedMessageTypeResolver;
+import org.axonframework.messaging.MessageTypeResolver;
+import org.junit.jupiter.api.*;
 
 import java.util.ArrayList;
 import java.util.List;
 
-import static java.util.Arrays.asList;
-import static java.util.Collections.singletonList;
-import static org.axonframework.eventhandling.GenericEventMessage.asEventMessage;
 import static org.junit.jupiter.api.Assertions.*;
 
+@Disabled("TODO #3304")
 class ReplayParameterResolverFactoryTest {
 
     private SomeHandler handler;
-    private AnnotationEventHandlerAdapter testSubject;
-    private ReplayToken replayToken;
+    private AnnotatedEventHandlingComponent testSubject;
+    private TrackingToken replayToken;
     private GlobalSequenceTrackingToken regularToken;
+    private final MessageTypeResolver messageTypeResolver = new ClassBasedMessageTypeResolver();
 
     @BeforeEach
     void setUp() {
         handler = new SomeHandler();
-        testSubject = new AnnotationEventHandlerAdapter(handler);
+//        testSubject = new AnnotationEventHandlerAdapter(handler, messageTypeResolver);
         regularToken = new GlobalSequenceTrackingToken(1L);
-        replayToken = new ReplayToken(regularToken);
+        replayToken = ReplayToken.createReplayToken(regularToken);
     }
 
-    @Test
-    void invokeWithReplayTokens() throws Exception {
-        GenericTrackedEventMessage<Object> replayEvent = new GenericTrackedEventMessage<>(replayToken, asEventMessage(1L));
-        GenericTrackedEventMessage<Object> liveEvent = new GenericTrackedEventMessage<>(regularToken, asEventMessage(2L));
-        assertTrue(testSubject.canHandle(replayEvent));
-        assertTrue(testSubject.canHandle(liveEvent));
-        testSubject.handle(replayEvent);
-        testSubject.handle(liveEvent);
-
-        assertEquals(asList(1L, 2L), handler.receivedLongs);
-        assertEquals(singletonList(1L), handler.receivedInReplay);
-    }
+//    @Test
+//    void invokeWithReplayTokens() throws Exception {
+//        EventMessage replayEvent = new GenericTrackedEventMessage(replayToken, asEventMessage(1L));
+//        ProcessingContext replayContext = StubProcessingContext.forMessage(replayEvent)
+//                                                               .withResource(TrackingToken.RESOURCE_KEY, replayToken);
+//        EventMessage liveEvent = asEventMessage(2L);
+//        ProcessingContext liveContext = StubProcessingContext.forMessage(liveEvent)
+//                                                             .withResource(TrackingToken.RESOURCE_KEY, regularToken);
+//        assertTrue(testSubject.canHandle(replayEvent, replayContext));
+//        assertTrue(testSubject.canHandle(liveEvent, liveContext));
+//        testSubject.handleSync(replayEvent, replayContext);
+//        testSubject.handleSync(liveEvent, liveContext);
+//
+//        assertEquals(asList(1L, 2L), handler.receivedLongs);
+//        assertEquals(singletonList(1L), handler.receivedInReplay);
+//    }
 
     private static class SomeHandler {
 
-        private List<Long> receivedLongs = new ArrayList<>();
-        private List<Long> receivedInReplay = new ArrayList<>();
+        private final List<Long> receivedLongs = new ArrayList<>();
+        private final List<Long> receivedInReplay = new ArrayList<>();
 
         @EventHandler
         public void handle(Long event, TrackingToken token, ReplayStatus replayStatus) {
@@ -72,5 +78,4 @@ class ReplayParameterResolverFactoryTest {
             }
         }
     }
-
 }

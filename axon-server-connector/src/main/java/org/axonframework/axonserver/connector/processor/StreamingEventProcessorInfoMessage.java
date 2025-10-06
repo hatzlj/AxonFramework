@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2020. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,11 +19,10 @@ package org.axonframework.axonserver.connector.processor;
 import io.axoniq.axonserver.grpc.control.EventProcessorInfo;
 import io.axoniq.axonserver.grpc.control.EventProcessorInfo.SegmentStatus;
 import io.axoniq.axonserver.grpc.control.PlatformInboundInstruction;
-import org.axonframework.eventhandling.EventTrackerStatus;
-import org.axonframework.eventhandling.StreamingEventProcessor;
-import org.axonframework.eventhandling.TrackingEventProcessor;
-import org.axonframework.eventhandling.TrackingToken;
-import org.axonframework.eventhandling.pooled.PooledStreamingEventProcessor;
+import org.axonframework.eventhandling.processors.streaming.segmenting.EventTrackerStatus;
+import org.axonframework.eventhandling.processors.streaming.StreamingEventProcessor;
+import org.axonframework.eventhandling.processors.streaming.token.TrackingToken;
+import org.axonframework.eventhandling.processors.streaming.pooled.PooledStreamingEventProcessor;
 
 import java.util.List;
 
@@ -54,7 +53,7 @@ public class StreamingEventProcessorInfoMessage {
                                                             .collect(toList());
 
         return EventProcessorInfo.newBuilder()
-                                 .setProcessorName(eventProcessor.getName())
+                                 .setProcessorName(eventProcessor.name())
                                  .setTokenStoreIdentifier(eventProcessor.getTokenStoreIdentifier())
                                  .setMode(defineMode(eventProcessor.getClass()))
                                  .setActiveThreads(eventProcessor.processingStatus().size())
@@ -67,9 +66,7 @@ public class StreamingEventProcessorInfoMessage {
     }
 
     private static String defineMode(Class<? extends StreamingEventProcessor> streamingProcessorClass) {
-        if (streamingProcessorClass.isAssignableFrom(TrackingEventProcessor.class)) {
-            return "Tracking";
-        } else if (streamingProcessorClass.isAssignableFrom(PooledStreamingEventProcessor.class)) {
+        if (streamingProcessorClass.isAssignableFrom(PooledStreamingEventProcessor.class)) {
             return "Pooled Streaming";
         } else {
             return "Streaming";

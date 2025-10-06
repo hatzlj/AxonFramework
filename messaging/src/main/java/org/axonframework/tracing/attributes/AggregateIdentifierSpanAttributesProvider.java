@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,18 +16,16 @@
 
 package org.axonframework.tracing.attributes;
 
-import org.axonframework.eventhandling.DomainEventMessage;
+import jakarta.annotation.Nonnull;
 import org.axonframework.messaging.Message;
 import org.axonframework.tracing.SpanAttributesProvider;
 
 import java.util.Map;
-import javax.annotation.Nonnull;
 
 import static java.util.Collections.emptyMap;
-import static java.util.Collections.singletonMap;
 
 /**
- * Adds the aggregate identifier to the Span if the current message being handled is a {@link DomainEventMessage}.
+ * Adds the aggregate identifier to the Span if the current message being handled is a {@code DomainEventMessage}.
  *
  * @author Mitchell Herrijgers
  * @since 4.6.0
@@ -35,11 +33,11 @@ import static java.util.Collections.singletonMap;
 public class AggregateIdentifierSpanAttributesProvider implements SpanAttributesProvider {
 
     @Override
-    public @Nonnull Map<String, String> provideForMessage(@Nonnull Message<?> message) {
-        if (message instanceof DomainEventMessage) {
-            DomainEventMessage<?> domainEventMessage = (DomainEventMessage<?>) message;
-            return singletonMap("axon_aggregate_identifier", domainEventMessage.getAggregateIdentifier());
-        }
+    public @Nonnull Map<String, String> provideForMessage(@Nonnull Message message) {
+//        if (message instanceof DomainEventMessage) {
+//            DomainEventMessage domainEventMessage = (DomainEventMessage) message;
+//            return singletonMap("axon_aggregate_identifier", domainEventMessage.getAggregateIdentifier());
+//        }
         return emptyMap();
     }
 }

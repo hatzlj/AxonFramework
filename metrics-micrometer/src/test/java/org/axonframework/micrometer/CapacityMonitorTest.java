@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,7 +21,9 @@ import io.micrometer.core.instrument.MockClock;
 import io.micrometer.core.instrument.Tags;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.axonframework.eventhandling.EventMessage;
+import org.axonframework.eventhandling.GenericEventMessage;
 import org.axonframework.messaging.Message;
+import org.axonframework.messaging.MessageType;
 import org.axonframework.monitoring.MessageMonitor;
 import org.junit.jupiter.api.*;
 
@@ -32,7 +34,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
-import static org.axonframework.eventhandling.GenericEventMessage.asEventMessage;
 import static org.junit.jupiter.api.Assertions.*;
 
 class CapacityMonitorTest {
@@ -47,9 +48,9 @@ class CapacityMonitorTest {
                                                                    TimeUnit.SECONDS,
                                                                    testClock);
 
-        EventMessage<Object> foo = asEventMessage(1);
-        EventMessage<Object> bar = asEventMessage("bar");
-        Map<? super Message<?>, MessageMonitor.MonitorCallback> callbacks = testSubject
+        EventMessage foo = asEventMessage(1);
+        EventMessage bar = asEventMessage("bar");
+        Map<? super Message, MessageMonitor.MonitorCallback> callbacks = testSubject
                 .onMessagesIngested(Arrays.asList(foo, bar));
 
         testClock.addSeconds(1);
@@ -72,12 +73,12 @@ class CapacityMonitorTest {
                                                                    testClock,
                                                                    message -> Tags
                                                                            .of(TagsUtil.PAYLOAD_TYPE_TAG,
-                                                                               message.getPayloadType()
+                                                                               message.payloadType()
                                                                                       .getSimpleName()));
 
-        EventMessage<Object> foo = asEventMessage(1);
-        EventMessage<Object> bar = asEventMessage("bar");
-        Map<? super Message<?>, MessageMonitor.MonitorCallback> callbacks = testSubject
+        EventMessage foo = asEventMessage(1);
+        EventMessage bar = asEventMessage("bar");
+        Map<? super Message, MessageMonitor.MonitorCallback> callbacks = testSubject
                 .onMessagesIngested(Arrays.asList(foo, bar));
 
         testClock.addSeconds(1);
@@ -103,18 +104,18 @@ class CapacityMonitorTest {
                                                                    TimeUnit.SECONDS,
                                                                    testClock,
                                                                    message -> Tags.of("myPayloadType",
-                                                                                      message.getPayloadType()
+                                                                                      message.payloadType()
                                                                                              .getSimpleName(),
-                                                                                      "myMetaData",
-                                                                                      message.getMetaData()
+                                                                                      "myMetadata",
+                                                                                      message.metadata()
                                                                                              .get("myMetadataKey")
                                                                                              .toString()));
 
-        EventMessage<Object> foo = asEventMessage(1).withMetaData(Collections.singletonMap("myMetadataKey",
+        EventMessage foo = asEventMessage(1).withMetadata(Collections.singletonMap("myMetadataKey",
                                                                                            "myMetadataValue1"));
-        EventMessage<Object> bar = asEventMessage("bar").withMetaData(Collections.singletonMap("myMetadataKey",
+        EventMessage bar = asEventMessage("bar").withMetadata(Collections.singletonMap("myMetadataKey",
                                                                                                "myMetadataValue2"));
-        Map<? super Message<?>, MessageMonitor.MonitorCallback> callbacks = testSubject
+        Map<? super Message, MessageMonitor.MonitorCallback> callbacks = testSubject
                 .onMessagesIngested(Arrays.asList(foo, bar));
 
         testClock.addSeconds(1);
@@ -130,9 +131,13 @@ class CapacityMonitorTest {
                                  .anyMatch(gauge -> Objects.equals(gauge.getId().getTag("myPayloadType"), "String")));
         assertTrue(capacityGauges.stream()
                                  .anyMatch(gauge -> Objects
-                                         .equals(gauge.getId().getTag("myMetaData"), "myMetadataValue1")));
+                                         .equals(gauge.getId().getTag("myMetadata"), "myMetadataValue1")));
         assertTrue(capacityGauges.stream()
                                  .anyMatch(gauge -> Objects
-                                         .equals(gauge.getId().getTag("myMetaData"), "myMetadataValue2")));
+                                         .equals(gauge.getId().getTag("myMetadata"), "myMetadataValue2")));
+    }
+
+    private static EventMessage asEventMessage(Object payload) {
+        return new GenericEventMessage(new MessageType("event"), payload);
     }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2023. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@ import org.axonframework.tracing.SpanAttributesProvider;
 
 import java.util.Collections;
 import java.util.Map;
-import javax.annotation.Nonnull;
+import jakarta.annotation.Nonnull;
 
 /**
  * Adds the message type (simple class name) to the Span.
@@ -32,7 +32,7 @@ import javax.annotation.Nonnull;
 public class MessageTypeSpanAttributesProvider implements SpanAttributesProvider {
 
     @Override
-    public @Nonnull Map<String, String> provideForMessage(@Nonnull Message<?> message) {
+    public @Nonnull Map<String, String> provideForMessage(@Nonnull Message message) {
         return Collections.singletonMap("axon_message_type", message.getClass().getSimpleName());
     }
 }

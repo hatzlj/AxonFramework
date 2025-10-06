@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,41 +16,45 @@
 
 package org.axonframework.eventhandling.replay;
 
+import jakarta.annotation.Nonnull;
+import org.axonframework.common.TypeReference;
 import org.axonframework.messaging.Message;
+import org.axonframework.serialization.Converter;
 
+import java.lang.reflect.Type;
 import java.util.Map;
-import javax.annotation.Nonnull;
 
 /**
- * Represents a Message initiating the reset of an Event Handling Component. A payload of {@code T} can be provided to
- * support the reset operation handling this message.
+ * A {@link Message} initiating the reset of an Event Handling Component.
+ * <p>
+ * A payload can be provided to support the reset operation handling this message.
  *
- * @param <T> the type of payload contained in the message
  * @author Steven van Beelen
- * @since 4.4
+ * @since 4.4.0
  */
-public interface ResetContext<T> extends Message<T> {
+public interface ResetContext extends Message {
 
-    /**
-     * Returns a copy of this {@link ResetContext} with the given {@code metaData}. The payload remains unchanged.
-     * <p/>
-     * While the implementation returned may be different than the implementation of {@code this}, implementations must
-     * take special care in returning the same type of Message (e.g. EventMessage, DomainEventMessage) to prevent errors
-     * further downstream.
-     *
-     * @param metaData the new MetaData for the Message
-     * @return a copy of this message with the given MetaData
-     */
     @Override
-    ResetContext<T> withMetaData(@Nonnull Map<String, ?> metaData);
+    @Nonnull
+    ResetContext withMetadata(@Nonnull Map<String, String> metadata);
 
-    /**
-     * Returns a copy of this {@link ResetContext} with it MetaData merged with the given {@code metaData}. The payload
-     * remains unchanged.
-     *
-     * @param metaData the MetaData to merge with
-     * @return a copy of this message with the given MetaData
-     */
     @Override
-    ResetContext<T> andMetaData(@Nonnull Map<String, ?> metaData);
+    @Nonnull
+    ResetContext andMetadata(@Nonnull Map<String, String> metadata);
+
+    @Override
+    @Nonnull
+    default ResetContext withConvertedPayload(@Nonnull Class<?> type, @Nonnull Converter converter) {
+        return withConvertedPayload((Type) type, converter);
+    }
+
+    @Override
+    @Nonnull
+    default ResetContext withConvertedPayload(@Nonnull TypeReference<?> type, @Nonnull Converter converter) {
+        return withConvertedPayload(type.getType(), converter);
+    }
+
+    @Override
+    @Nonnull
+    ResetContext withConvertedPayload(@Nonnull Type type, @Nonnull Converter converter);
 }

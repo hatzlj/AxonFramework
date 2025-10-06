@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,49 +16,59 @@
 
 package org.axonframework.queryhandling;
 
+import jakarta.annotation.Nonnull;
+import org.axonframework.common.TypeReference;
 import org.axonframework.messaging.responsetypes.ResponseType;
+import org.axonframework.serialization.Converter;
 
+import java.lang.reflect.Type;
 import java.util.Map;
-import javax.annotation.Nonnull;
 
 /**
- * Message type that carries a Subscription Query: a request for information. Besides a payload, Subscription Query
- * Messages also carry the expected response type and update type. The response type is the type of result expected by
- * the caller. The update type is type of incremental updates.
+ * A {@link QueryMessage} type that carries a subscription query: a request for information.
+ * <p>
+ * Besides a payload, subscription query messages also carry the expected {@link #responseType() initial response type}
+ * and {@link #updatesResponseType() update type}. The response type is the type of result expected by the caller. The
+ * update type is type of incremental updates.
  * <p>
  * Handlers should only answer a query if they can respond with the appropriate response type and update type.
  *
- * @param <Q> the type of payload
- * @param <I> the type of initial response
- * @param <U> the type of incremental responses
  * @author Allard Buijze
- * @since 3.3
+ * @since 3.3.0
  */
-public interface SubscriptionQueryMessage<Q, I, U> extends QueryMessage<Q, I> {
+public interface SubscriptionQueryMessage extends QueryMessage {
 
     /**
-     * Returns the type of incremental responses.
+     * The {@link ResponseType type of incremental responses} expected by the sender of the query.
      *
-     * @return the type of incremental responses
+     * @return The {@link ResponseType type of incremental responses} expected by the sender of the query.
      */
-    ResponseType<U> getUpdateResponseType();
+    @Nonnull
+    ResponseType<?> updatesResponseType();
 
-    /**
-     * Returns a copy of this SubscriptionQueryMessage with the given {@code metaData}. The payload remains unchanged.
-     *
-     * @param metaData The new MetaData for the SubscriptionQueryMessage
-     * @return a copy of this message with the given MetaData
-     */
     @Override
-    SubscriptionQueryMessage<Q, I, U> withMetaData(@Nonnull Map<String, ?> metaData);
+    @Nonnull
+    SubscriptionQueryMessage withMetadata(@Nonnull Map<String, String> metadata);
 
-    /**
-     * Returns a copy of this SubscriptionQueryMessage with its MetaData merged with given {@code metaData}. The payload
-     * remains unchanged.
-     *
-     * @param additionalMetaData The MetaData to merge into the SubscriptionQueryMessage
-     * @return a copy of this message with the given additional MetaData
-     */
     @Override
-    SubscriptionQueryMessage<Q, I, U> andMetaData(@Nonnull Map<String, ?> additionalMetaData);
+    @Nonnull
+    SubscriptionQueryMessage andMetadata(@Nonnull Map<String, String> additionalMetadata);
+
+    @Override
+    @Nonnull
+    default SubscriptionQueryMessage withConvertedPayload(@Nonnull Class<?> type,
+                                                          @Nonnull Converter converter) {
+        return withConvertedPayload((Type) type, converter);
+    }
+
+    @Override
+    @Nonnull
+    default SubscriptionQueryMessage withConvertedPayload(@Nonnull TypeReference<?> type,
+                                                          @Nonnull Converter converter) {
+        return withConvertedPayload(type.getType(), converter);
+    }
+
+    @Override
+    @Nonnull
+    SubscriptionQueryMessage withConvertedPayload(@Nonnull Type type, @Nonnull Converter converter);
 }

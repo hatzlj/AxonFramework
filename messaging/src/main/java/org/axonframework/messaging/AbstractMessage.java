@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,54 +16,69 @@
 
 package org.axonframework.messaging;
 
+import jakarta.annotation.Nonnull;
+
 import java.util.Map;
-import javax.annotation.Nonnull;
 
 /**
- * Abstract base class for Messages.
+ * Abstract base class for {@link Message Messages}.
  *
  * @author Rene de Waele
+ * @author Steven van Beelen
+ * @since 3.0.0
  */
-public abstract class AbstractMessage<T> implements Message<T> {
+public abstract class AbstractMessage implements Message {
 
-    private static final long serialVersionUID = -5847906865361406657L;
     private final String identifier;
+    private final MessageType type;
 
     /**
-     * Initializes a new message with given identifier.
+     * Initializes a new {@link Message} with given {@code identifier} and {@code type}.
      *
-     * @param identifier the message identifier
+     * @param identifier The identifier of this {@link Message}.
+     * @param type       The {@link MessageType type} for this {@link Message}.
      */
-    public AbstractMessage(String identifier) {
+    public AbstractMessage(@Nonnull String identifier,
+                           @Nonnull MessageType type) {
         this.identifier = identifier;
+        this.type = type;
     }
 
     @Override
-    public String getIdentifier() {
-        return identifier;
+    @Nonnull
+    public String identifier() {
+        return this.identifier;
     }
 
     @Override
-    public Message<T> withMetaData(@Nonnull Map<String, ?> metaData) {
-        if (getMetaData().equals(metaData)) {
+    @Nonnull
+    public MessageType type() {
+        return this.type;
+    }
+
+    @Override
+    @Nonnull
+    public Message withMetadata(@Nonnull Map<String, String> metadata) {
+        if (metadata().equals(metadata)) {
             return this;
         }
-        return withMetaData(MetaData.from(metaData));
+        return withMetadata(Metadata.from(metadata));
     }
 
     @Override
-    public Message<T> andMetaData(@Nonnull Map<String, ?> metaData) {
-        if (metaData.isEmpty()) {
+    @Nonnull
+    public Message andMetadata(@Nonnull Map<String, String> metadata) {
+        if (metadata.isEmpty()) {
             return this;
         }
-        return withMetaData(getMetaData().mergedWith(metaData));
+        return withMetadata(metadata().mergedWith(metadata));
     }
 
     /**
-     * Returns a new message instance with the same payload and properties as this message but given {@code metaData}.
+     * Returns a new message instance with the same payload and properties as this message but given {@code metadata}.
      *
-     * @param metaData The metadata in the new message
+     * @param metadata The metadata in the new message
      * @return a copy of this instance with given metadata
      */
-    protected abstract Message<T> withMetaData(MetaData metaData);
+    protected abstract Message withMetadata(Metadata metadata);
 }

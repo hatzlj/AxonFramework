@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,42 +17,47 @@
 package org.axonframework.axonserver.connector.query;
 
 import io.axoniq.axonserver.grpc.query.QueryRequest;
-import org.axonframework.axonserver.connector.util.GrpcMetaData;
+import jakarta.annotation.Nonnull;
+import jakarta.annotation.Nullable;
+import org.axonframework.axonserver.connector.util.GrpcMetadata;
 import org.axonframework.axonserver.connector.util.GrpcSerializedObject;
-import org.axonframework.messaging.MetaData;
+import org.axonframework.messaging.MessageType;
+import org.axonframework.messaging.Metadata;
 import org.axonframework.messaging.responsetypes.ResponseType;
 import org.axonframework.queryhandling.QueryMessage;
+import org.axonframework.serialization.Converter;
 import org.axonframework.serialization.LazyDeserializingObject;
 import org.axonframework.serialization.Serializer;
 
+import java.lang.reflect.Type;
 import java.util.Map;
 import java.util.function.Supplier;
-import javax.annotation.Nonnull;
 
 /**
  * Wrapper that allows clients to access a gRPC {@link QueryRequest} as a {@link QueryMessage}.
  *
- * @param <Q> a generic specifying the type of the {@link QueryMessage}'s payload
- * @param <R> a generic specifying the expected response type of the {@link QueryMessage}
+ * @param <P> A generic specifying the type of the {@link QueryMessage QueryMessage's} {@link #payload() payload}.
+ * @param <R> A generic specifying the expected {@link #responseType() response type} of the {@link QueryMessage}.
  * @author Marc Gathier
- * @since 4.0
+ * @since 4.0.0
  */
-public class GrpcBackedQueryMessage<Q, R> implements QueryMessage<Q, R> {
+public class GrpcBackedQueryMessage<P, R> implements QueryMessage {
 
     private final QueryRequest query;
-    private final LazyDeserializingObject<Q> serializedPayload;
+    private final LazyDeserializingObject<P> serializedPayload;
     private final LazyDeserializingObject<ResponseType<R>> serializedResponseType;
-    private final Supplier<MetaData> metaDataSupplier;
+    private final Supplier<Metadata> metadataSupplier;
+    private final MessageType type;
 
     /**
-     * Instantiate a {@link GrpcBackedResponseMessage} with the given {@code queryRequest}, using the provided {@code
-     * messageSerializer} to be able to retrieve the payload and {@link MetaData} from it. The {@code serializer} is
-     * solely used to deserialize the response type.
+     * Instantiate a {@link GrpcBackedResponseMessage} with the given {@code queryRequest}, using the provided
+     * {@code messageSerializer} to be able to retrieve the payload and {@link Metadata} from it. The {@code serializer}
+     * is solely used to deserialize the response type.
      *
-     * @param queryRequest      the {@link QueryRequest} which is being wrapped as a {@link QueryMessage}
-     * @param messageSerializer the {@link Serializer} used to deserialize the payload and {@link MetaData} from the
-     *                          given {@code queryRequest}
-     * @param serializer        the {@link Serializer} used to deserialize the response type
+     * @param queryRequest      The {@link QueryRequest} which is being wrapped as a {@link QueryMessage}.
+     * @param messageSerializer The {@link Serializer} used to deserialize the payload and {@link Metadata} from the
+     *                          given {@code queryRequest}.
+     * @param serializer        The {@link Serializer} used to deserialize the response type.
      */
     public GrpcBackedQueryMessage(QueryRequest queryRequest,
                                   Serializer messageSerializer,
@@ -61,59 +66,86 @@ public class GrpcBackedQueryMessage<Q, R> implements QueryMessage<Q, R> {
                 queryRequest,
                 new LazyDeserializingObject<>(new GrpcSerializedObject(queryRequest.getPayload()), messageSerializer),
                 new LazyDeserializingObject<>(new GrpcSerializedObject(queryRequest.getResponseType()), serializer),
-                new GrpcMetaData(queryRequest.getMetaDataMap(), messageSerializer)
+                new GrpcMetadata(queryRequest.getMetaDataMap(), messageSerializer),
+                new MessageType(queryRequest.getQuery())
         );
     }
 
     private GrpcBackedQueryMessage(QueryRequest queryRequest,
-                                   LazyDeserializingObject<Q> serializedPayload,
+                                   LazyDeserializingObject<P> serializedPayload,
                                    LazyDeserializingObject<ResponseType<R>> serializedResponseType,
-                                   Supplier<MetaData> metaDataSupplier) {
+                                   Supplier<Metadata> metadataSupplier,
+                                   MessageType type) {
         this.query = queryRequest;
         this.serializedPayload = serializedPayload;
         this.serializedResponseType = serializedResponseType;
-        this.metaDataSupplier = metaDataSupplier;
+        this.metadataSupplier = metadataSupplier;
+        this.type = type;
     }
 
     @Override
-    public String getQueryName() {
-        return query.getQuery();
-    }
-
-    @Override
-    public ResponseType<R> getResponseType() {
-        return serializedResponseType.getObject();
-    }
-
-    @Override
-    public String getIdentifier() {
+    @Nonnull
+    public String identifier() {
         return query.getMessageIdentifier();
     }
 
     @Override
-    public MetaData getMetaData() {
-        return metaDataSupplier.get();
+    @Nonnull
+    public MessageType type() {
+        return this.type;
     }
 
     @Override
-    public Q getPayload() {
+    @Nonnull
+    public ResponseType<R> responseType() {
+        return serializedResponseType.getObject();
+    }
+
+    @Override
+    @Nullable
+    public P payload() {
         return serializedPayload.getObject();
     }
 
     @Override
-    public Class<Q> getPayloadType() {
+    @Nullable
+    public <T> T payloadAs(@Nonnull Type type, @Nullable Converter converter) {
+        // TODO #3488 - Not implementing this, as the GrpcBackedResponseMessage will be removed as part of #3488
+        return null;
+    }
+
+    @Override
+    @Nonnull
+    public Metadata metadata() {
+        return metadataSupplier.get();
+    }
+
+    @Override
+    @Nonnull
+    public Class<P> payloadType() {
         return serializedPayload.getType();
     }
 
     @Override
-    public GrpcBackedQueryMessage<Q, R> withMetaData(@Nonnull Map<String, ?> metaData) {
-        return new GrpcBackedQueryMessage<>(
-                query, serializedPayload, serializedResponseType, () -> MetaData.from(metaData)
-        );
+    @Nonnull
+    public GrpcBackedQueryMessage<P, R> withMetadata(@Nonnull Map<String, String> metadata) {
+        return new GrpcBackedQueryMessage<>(query,
+                                            serializedPayload,
+                                            serializedResponseType,
+                                            () -> Metadata.from(metadata),
+                                            type);
     }
 
     @Override
-    public GrpcBackedQueryMessage<Q, R> andMetaData(@Nonnull Map<String, ?> metaData) {
-        return withMetaData(getMetaData().mergedWith(metaData));
+    @Nonnull
+    public GrpcBackedQueryMessage<P, R> andMetadata(@Nonnull Map<String, String> metadata) {
+        return withMetadata(metadata().mergedWith(metadata));
+    }
+
+    @Override
+    @Nonnull
+    public QueryMessage withConvertedPayload(@Nonnull Type type, @Nonnull Converter converter) {
+        // TODO #3488 - Not implementing this, as the GrpcBackedResponseMessage will be removed as part of #3488
+        return null;
     }
 }

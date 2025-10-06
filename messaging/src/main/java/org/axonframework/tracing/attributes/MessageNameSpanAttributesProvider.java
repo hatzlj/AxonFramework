@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2023. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,21 +16,17 @@
 
 package org.axonframework.tracing.attributes;
 
-import org.axonframework.commandhandling.CommandMessage;
 import org.axonframework.messaging.Message;
-import org.axonframework.queryhandling.QueryMessage;
 import org.axonframework.tracing.Span;
 import org.axonframework.tracing.SpanAttributesProvider;
 
 import java.util.Map;
-import javax.annotation.Nonnull;
+import jakarta.annotation.Nonnull;
 
-import static java.util.Collections.emptyMap;
 import static java.util.Collections.singletonMap;
 
 /**
- * Adds the name of a {@link Message} to the {@link Span}. Note this only takes effect for
- * {@link CommandMessage CommandMessages} and {@link QueryMessage QueryMessages}.
+ * Adds the name of a {@link Message} to the {@link Span}.
  *
  * @author Mitchell Herrijgers
  * @since 4.6.0
@@ -38,21 +34,7 @@ import static java.util.Collections.singletonMap;
 public class MessageNameSpanAttributesProvider implements SpanAttributesProvider {
 
     @Override
-    public @Nonnull Map<String, String> provideForMessage(@Nonnull Message<?> message) {
-        String name = determineName(message);
-        if (name != null) {
-            return singletonMap("axon_message_name", name);
-        }
-        return emptyMap();
-    }
-
-    private String determineName(Message<?> message) {
-        if (message instanceof CommandMessage) {
-            return ((CommandMessage<?>) message).getCommandName();
-        }
-        if (message instanceof QueryMessage) {
-            return QueryMessage.queryName(message);
-        }
-        return null;
+    public @Nonnull Map<String, String> provideForMessage(@Nonnull Message message) {
+        return singletonMap("axon_message_name", message.type().toString());
     }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2023. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@
 
 package org.axonframework.test.utils;
 
-import org.axonframework.messaging.MetaData;
+import org.axonframework.messaging.Metadata;
 
 /**
  * Interface towards a mechanism that replicates the behavior of a Command Handling component. The goal of this
@@ -32,10 +32,10 @@ public interface CallbackBehavior {
      * this invocation is used to invoke the callback.
      *
      * @param commandPayload  The payload of the Command Message
-     * @param commandMetaData The MetaData of the CommandMessage
+     * @param commandMetadata The Metadata of the CommandMessage
      * @return any return value to pass to the callback's onResult method.
      *
      * @throws Exception If the onFailure method of the callback must be invoked
      */
-    Object handle(Object commandPayload, MetaData commandMetaData) throws Exception;
+    Object handle(Object commandPayload, Metadata commandMetadata) throws Exception;
 }

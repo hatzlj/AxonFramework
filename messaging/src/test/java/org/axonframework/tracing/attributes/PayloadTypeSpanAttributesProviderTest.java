@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ package org.axonframework.tracing.attributes;
 
 import org.axonframework.eventhandling.GenericEventMessage;
 import org.axonframework.messaging.Message;
+import org.axonframework.messaging.MessageType;
 import org.axonframework.tracing.SpanAttributesProvider;
 import org.junit.jupiter.api.*;
 
@@ -31,7 +32,7 @@ class PayloadTypeSpanAttributesProviderTest {
 
     @Test
     void stringPayload() {
-        Message<?> message = new GenericEventMessage<>("MyEvent");
+        Message message = new GenericEventMessage(new MessageType("event"), "MyEvent");
 
         Map<String, String> map = provider.provideForMessage(message);
         assertEquals(1, map.size());
@@ -40,7 +41,7 @@ class PayloadTypeSpanAttributesProviderTest {
 
     @Test
     void classPayload() {
-        Message<?> message = new GenericEventMessage<>(new MyEvent());
+        Message message = new GenericEventMessage(new MessageType("event"), new MyEvent());
 
         Map<String, String> map = provider.provideForMessage(message);
         assertEquals(1, map.size());

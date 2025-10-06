@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2023. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,7 +30,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.function.UnaryOperator;
-import javax.annotation.Nonnull;
+import jakarta.annotation.Nonnull;
 
 import static org.axonframework.common.BuilderUtils.assertNonEmpty;
 import static org.axonframework.common.BuilderUtils.assertNonNull;
@@ -43,20 +43,20 @@ import static org.axonframework.common.BuilderUtils.assertNonNull;
  * @author Ivan Dugalic
  * @since 4.1
  */
-public class MessageTimerMonitor implements MessageMonitor<Message<?>> {
+public class MessageTimerMonitor implements MessageMonitor<Message> {
 
     private final String meterNamePrefix;
     private final MeterRegistry meterRegistry;
     private final Clock clock;
-    private final Function<Message<?>, Iterable<Tag>> tagsBuilder;
+    private final Function<Message, Iterable<Tag>> tagsBuilder;
     private final UnaryOperator<Timer.Builder> timerCustomization;
 
     /**
      * Instantiate a Builder to be able to create a {@link MessageTimerMonitor}.
      * <p>
      * The {@link Clock} is defaulted to a {@link Clock#SYSTEM}, the {@code tagsBuilder} to a {@link Function} returning
-     * {@link Tags#empty()} and the {@code timerCustomization} to a no-op. The {@code meterNamePrefix} and {@link
-     * MeterRegistry} are <b>hard requirements</b> and as such should be provided.
+     * {@link Tags#empty()} and the {@code timerCustomization} to a no-op. The {@code meterNamePrefix} and
+     * {@link MeterRegistry} are <b>hard requirements</b> and as such should be provided.
      *
      * @return a Builder to be able to create a {@link MessageTimerMonitor}
      */
@@ -81,75 +81,8 @@ public class MessageTimerMonitor implements MessageMonitor<Message<?>> {
         this.timerCustomization = builder.timerCustomization;
     }
 
-    /**
-     * Creates a message timer monitor.
-     *
-     * @param meterNamePrefix the prefix for the meter name that will be created in the given meterRegistry
-     * @param meterRegistry   the meter registry used to create and register the meters
-     * @return the message timer monitor
-     * @deprecated in favor of using the {@link #builder()}
-     */
-    @Deprecated
-    public static MessageTimerMonitor buildMonitor(String meterNamePrefix, MeterRegistry meterRegistry) {
-        return buildMonitor(meterNamePrefix, meterRegistry, Clock.SYSTEM);
-    }
-
-    /**
-     * Creates a message timer monitor.
-     *
-     * @param meterNamePrefix the prefix for the meter name that will be created in the given meterRegistry
-     * @param meterRegistry   the meter registry used to create and register the meters
-     * @param tagsBuilder     the function used to construct the list of micrometer {@link Tag}, based on the ingested
-     *                        message
-     * @return the message timer monitor
-     * @deprecated in favor of using the {@link #builder()}
-     */
-    @Deprecated
-    public static MessageTimerMonitor buildMonitor(String meterNamePrefix,
-                                                   MeterRegistry meterRegistry,
-                                                   Function<Message<?>, Iterable<Tag>> tagsBuilder) {
-        return buildMonitor(meterNamePrefix, meterRegistry, Clock.SYSTEM, tagsBuilder);
-    }
-
-    /**
-     * Creates a message timer monitor.
-     *
-     * @param meterNamePrefix the prefix for the meter name that will be created in the given meterRegistry
-     * @param meterRegistry   the meter registry used to create and register the meters
-     * @param clock           the clock used to measure the process time per message
-     * @return the message timer monitor
-     * @deprecated in favor of using the {@link #builder()}
-     */
-    @Deprecated
-    public static MessageTimerMonitor buildMonitor(String meterNamePrefix, MeterRegistry meterRegistry, Clock clock) {
-        return buildMonitor(meterNamePrefix, meterRegistry, clock, message -> Tags.empty());
-    }
-
-    /**
-     * Creates a message timer monitor.
-     *
-     * @param meterNamePrefix the prefix for the meter name that will be created in the given meterRegistry
-     * @param meterRegistry   the meter registry used to create and register the meters
-     * @param tagsBuilder     the function used to construct the list of micrometer {@link Tag}, based on the ingested
-     *                        message
-     * @param clock           the clock used to measure the process time per message
-     * @return the message timer monitor
-     * @deprecated in favor of using the {@link #builder()}
-     */
-    @Deprecated
-    public static MessageTimerMonitor buildMonitor(String meterNamePrefix,
-                                                   MeterRegistry meterRegistry,
-                                                   Clock clock,
-                                                   Function<Message<?>, Iterable<Tag>> tagsBuilder) {
-        return builder().meterNamePrefix(meterNamePrefix)
-                        .meterRegistry(meterRegistry)
-                        .clock(clock)
-                        .tagsBuilder(tagsBuilder)
-                        .build();
-    }
-
     @Override
-    public MonitorCallback onMessageIngested(@Nonnull Message<?> message) {
+    public MonitorCallback onMessageIngested(@Nonnull Message message) {
         Iterable<Tag> tags = tagsBuilder.apply(message);
         Timer allTimer = buildTimer(meterNamePrefix, "allTimer", meterRegistry, tags, timerCustomization);
         Timer successTimer = buildTimer(meterNamePrefix, "successTimer", meterRegistry, tags, timerCustomization);
@@ -198,20 +131,20 @@ public class MessageTimerMonitor implements MessageMonitor<Message<?>> {
      * Builder class to instantiate a {@link MessageTimerMonitor}.
      * <p>
      * The {@link Clock} is defaulted to a {@link Clock#SYSTEM}, the {@code tagsBuilder} to a {@link Function} returning
-     * {@link Tags#empty()} and the {@code timerCustomization} to a no-op. The {@code meterNamePrefix} and {@link
-     * MeterRegistry} are <b>hard requirements</b> and as such should be provided.
+     * {@link Tags#empty()} and the {@code timerCustomization} to a no-op. The {@code meterNamePrefix} and
+     * {@link MeterRegistry} are <b>hard requirements</b> and as such should be provided.
      */
     public static class Builder {
 
         private String meterNamePrefix;
         private MeterRegistry meterRegistry;
         private Clock clock = Clock.SYSTEM;
-        private Function<Message<?>, Iterable<Tag>> tagsBuilder = message -> Tags.empty();
+        private Function<Message, Iterable<Tag>> tagsBuilder = message -> Tags.empty();
         private UnaryOperator<Timer.Builder> timerCustomization = timerBuilder -> timerBuilder;
 
         /**
-         * Sets the name used to prefix the names of the {@link Timer} instances created by this {@link
-         * MessageMonitor}.
+         * Sets the name used to prefix the names of the {@link Timer} instances created by this
+         * {@link MessageMonitor}.
          *
          * @param meterNamePrefix a {@link String} used to prefix the names of the {@link Timer} instances created by
          *                        this {@link MessageMonitor}
@@ -256,7 +189,7 @@ public class MessageTimerMonitor implements MessageMonitor<Message<?>> {
          *                    monitored
          * @return the current Builder instance, for fluent interfacing
          */
-        public Builder tagsBuilder(Function<Message<?>, Iterable<Tag>> tagsBuilder) {
+        public Builder tagsBuilder(Function<Message, Iterable<Tag>> tagsBuilder) {
             assertNonNull(tagsBuilder, "TagsBuilder may not be null");
             this.tagsBuilder = tagsBuilder;
             return this;
@@ -264,12 +197,13 @@ public class MessageTimerMonitor implements MessageMonitor<Message<?>> {
 
         /**
          * Allows for specifying a customization which will be added during the creation of the {@link Timer}. Defaults
-         * to a no-op. This for example allows more fine grained control over the published percentiles used by the
+         * to a no-op. This for example allows more fine-grained control over the published percentiles used by the
          * {@link Timer}.
          * <p>
-         * Without any customization, a {@link Timer} define the {@link Timer.Builder#distributionStatisticExpiry(Duration)}
-         * with a {@link Duration} of 10 minutes and {@link Timer.Builder#publishPercentiles(double...)} with the
-         * percentiles {@code 0.5}, {@code 0.75}, {@code 0.95}, {@code 0.98}, {@code 0.99} and {@code 0.999}.
+         * Without any customization, a {@link Timer} define the
+         * {@link Timer.Builder#distributionStatisticExpiry(Duration)} with a {@link Duration} of 10 minutes and
+         * {@link Timer.Builder#publishPercentiles(double...)} with the percentiles {@code 0.5}, {@code 0.75},
+         * {@code 0.95}, {@code 0.98}, {@code 0.99} and {@code 0.999}.
          *
          * @param timerCustomization a {@link UnaryOperator} taking in and returning a {@link Timer.Builder} forming a
          *                           customization on the {@link Timer} being created

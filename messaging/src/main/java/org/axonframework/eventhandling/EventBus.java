@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,12 +16,11 @@
 
 package org.axonframework.eventhandling;
 
-import org.axonframework.messaging.MessageDispatchInterceptorSupport;
+import jakarta.annotation.Nonnull;
 import org.axonframework.messaging.SubscribableMessageSource;
 
 import java.util.Arrays;
 import java.util.List;
-import javax.annotation.Nonnull;
 
 /**
  * Specification of the mechanism on which the Event Listeners can subscribe for events and event publishers can publish
@@ -34,8 +33,8 @@ import javax.annotation.Nonnull;
  * @see SimpleEventBus
  * @since 0.1
  */
-public interface EventBus extends SubscribableMessageSource<EventMessage<?>>,
-                                  MessageDispatchInterceptorSupport<EventMessage<?>> {
+@Deprecated // TODO #3392 - Replace for actual EventSink implementation.
+public interface EventBus extends SubscribableMessageSource<EventMessage> {
 
     /**
      * Publish a collection of events on this bus (one, or multiple). The events will be dispatched to all subscribed
@@ -46,7 +45,7 @@ public interface EventBus extends SubscribableMessageSource<EventMessage<?>>,
      *
      * @param events The collection of events to publish
      */
-    default void publish(EventMessage<?>... events) {
+    default void publish(EventMessage... events) {
         publish(Arrays.asList(events));
     }
 
@@ -59,6 +58,6 @@ public interface EventBus extends SubscribableMessageSource<EventMessage<?>>,
      *
      * @param events The collection of events to publish
      */
-    void publish(@Nonnull List<? extends EventMessage<?>> events);
+    void publish(@Nonnull List<? extends EventMessage> events);
 
 }

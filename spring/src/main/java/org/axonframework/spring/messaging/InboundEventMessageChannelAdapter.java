@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2023. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@ import org.springframework.messaging.MessageHandler;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
-import javax.annotation.Nonnull;
+import jakarta.annotation.Nonnull;
 
 import static java.util.Collections.emptyList;
 import static java.util.Collections.singletonList;
@@ -40,9 +40,9 @@ import static java.util.Collections.singletonList;
  * @author Allard Buijze
  * @since 3.0
  */
-public class InboundEventMessageChannelAdapter implements MessageHandler, SubscribableMessageSource<EventMessage<?>> {
+public class InboundEventMessageChannelAdapter implements MessageHandler, SubscribableMessageSource<EventMessage> {
 
-    private final CopyOnWriteArrayList<Consumer<List<? extends EventMessage<?>>>> messageProcessors = new CopyOnWriteArrayList<>();
+    private final CopyOnWriteArrayList<Consumer<List<? extends EventMessage>>> messageProcessors = new CopyOnWriteArrayList<>();
     private final EventMessageConverter eventMessageConverter;
 
     /**
@@ -70,7 +70,7 @@ public class InboundEventMessageChannelAdapter implements MessageHandler, Subscr
      * @param processors Processors to be subscribed
      * @param eventMessageConverter The message converter to use to convert spring message into event message
      */
-    public InboundEventMessageChannelAdapter(List<Consumer<List<? extends EventMessage<?>>>> processors,
+    public InboundEventMessageChannelAdapter(List<Consumer<List<? extends EventMessage>>> processors,
                                              EventMessageConverter eventMessageConverter){
         messageProcessors.addAll(processors);
         this.eventMessageConverter = eventMessageConverter;
@@ -78,7 +78,7 @@ public class InboundEventMessageChannelAdapter implements MessageHandler, Subscr
 
     @Nonnull
     @Override
-    public Registration subscribe(@Nonnull Consumer<List<? extends EventMessage<?>>> messageProcessor) {
+    public Registration subscribe(@Nonnull Consumer<List<? extends EventMessage>> messageProcessor) {
         messageProcessors.add(messageProcessor);
         return () -> messageProcessors.remove(messageProcessor);
     }
@@ -90,9 +90,9 @@ public class InboundEventMessageChannelAdapter implements MessageHandler, Subscr
      */
     @SuppressWarnings({"unchecked"})
     @Override
-    public void handleMessage(@Nonnull Message<?> message) {
-        List<? extends EventMessage<?>> messages = singletonList(transformMessage(message));
-        for (Consumer<List<? extends EventMessage<?>>> messageProcessor : messageProcessors) {
+    public void handleMessage(@Nonnull Message message) {
+        List<? extends EventMessage> messages = singletonList(transformMessage(message));
+        for (Consumer<List<? extends EventMessage>> messageProcessor : messageProcessors) {
             messageProcessor.accept(messages);
         }
     }
@@ -104,7 +104,7 @@ public class InboundEventMessageChannelAdapter implements MessageHandler, Subscr
      * @param message the Spring message to convert to an event
      * @return an EventMessage from given Spring message
      */
-    protected EventMessage<?> transformMessage(Message<?> message) {
+    protected EventMessage transformMessage(Message message) {
         return eventMessageConverter.convertFromInboundMessage(message);
     }
 }

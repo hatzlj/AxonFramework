@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,7 +25,7 @@ import org.springframework.context.ApplicationContextAware;
 import org.springframework.context.ApplicationEvent;
 import org.springframework.context.PayloadApplicationEvent;
 
-import javax.annotation.Nonnull;
+import jakarta.annotation.Nonnull;
 
 /**
  * Component that forward events received from a {@link SubscribableMessageSource} as Spring {@link ApplicationEvent} to
@@ -33,7 +33,7 @@ import javax.annotation.Nonnull;
  */
 public class ApplicationContextEventPublisher implements InitializingBean, ApplicationContextAware {
 
-    private final SubscribableMessageSource<? extends EventMessage<?>> messageSource;
+    private final SubscribableMessageSource<? extends EventMessage> messageSource;
     private ApplicationContext applicationContext;
 
     /**
@@ -42,7 +42,7 @@ public class ApplicationContextEventPublisher implements InitializingBean, Appli
      *
      * @param messageSource The source to subscribe to.
      */
-    public ApplicationContextEventPublisher(SubscribableMessageSource<? extends EventMessage<?>> messageSource) {
+    public ApplicationContextEventPublisher(SubscribableMessageSource<? extends EventMessage> messageSource) {
         this.messageSource = messageSource;
     }
 
@@ -62,8 +62,8 @@ public class ApplicationContextEventPublisher implements InitializingBean, Appli
      * @param eventMessage The EventMessage to transform
      * @return the Spring ApplicationEvent representing the Axon EventMessage
      */
-    protected ApplicationEvent convert(EventMessage<?> eventMessage) {
-        return new PayloadApplicationEvent<>(messageSource, eventMessage.getPayload());
+    protected ApplicationEvent convert(EventMessage eventMessage) {
+        return new PayloadApplicationEvent<>(messageSource, eventMessage.payload());
     }
 
     @Override

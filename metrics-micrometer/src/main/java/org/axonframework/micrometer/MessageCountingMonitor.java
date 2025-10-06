@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2023. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,7 +24,7 @@ import org.axonframework.messaging.Message;
 import org.axonframework.monitoring.MessageMonitor;
 
 import java.util.function.Function;
-import javax.annotation.Nonnull;
+import jakarta.annotation.Nonnull;
 
 /**
  * Counts the number of ingested, successful, failed and processed messages
@@ -33,7 +33,7 @@ import javax.annotation.Nonnull;
  * @author Ivan Dugalic
  * @since 4.1
  */
-public class MessageCountingMonitor implements MessageMonitor<Message<?>> {
+public class MessageCountingMonitor implements MessageMonitor<Message> {
 
     private static final String INGESTED_COUNTER = ".ingestedCounter";
     private static final String SUCCESS_COUNTER = ".successCounter";
@@ -43,7 +43,7 @@ public class MessageCountingMonitor implements MessageMonitor<Message<?>> {
 
     private final String meterNamePrefix;
     private final MeterRegistry meterRegistry;
-    private final Function<Message<?>, Iterable<Tag>> tagsBuilder;
+    private final Function<Message, Iterable<Tag>> tagsBuilder;
 
     private MessageCountingMonitor(String meterNamePrefix, MeterRegistry meterRegistry) {
 
@@ -54,7 +54,7 @@ public class MessageCountingMonitor implements MessageMonitor<Message<?>> {
 
 
     private MessageCountingMonitor(String meterNamePrefix, MeterRegistry meterRegistry,
-                                   Function<Message<?>, Iterable<Tag>> tagsBuilder) {
+                                   Function<Message, Iterable<Tag>> tagsBuilder) {
         this.meterNamePrefix = meterNamePrefix;
         this.meterRegistry = meterRegistry;
         this.tagsBuilder = tagsBuilder;
@@ -82,13 +82,13 @@ public class MessageCountingMonitor implements MessageMonitor<Message<?>> {
      * @return The message counting monitor
      */
     public static MessageCountingMonitor buildMonitor(String meterNamePrefix, MeterRegistry meterRegistry,
-                                                      Function<Message<?>, Iterable<Tag>> tagsBuilder) {
+                                                      Function<Message, Iterable<Tag>> tagsBuilder) {
 
         return new MessageCountingMonitor(meterNamePrefix, meterRegistry, tagsBuilder);
     }
 
     @Override
-    public MonitorCallback onMessageIngested(@Nonnull Message<?> message) {
+    public MonitorCallback onMessageIngested(@Nonnull Message message) {
 
         Iterable<Tag> tags = tagsBuilder.apply(message);
         Counter ingestedCounter = meterRegistry.counter(meterNamePrefix + INGESTED_COUNTER, tags);

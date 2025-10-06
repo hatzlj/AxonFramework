@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,50 +16,51 @@
 
 package org.axonframework.messaging.interceptors;
 
-import org.axonframework.messaging.InterceptorChain;
+import jakarta.annotation.Nonnull;
+import jakarta.annotation.Nullable;
 import org.axonframework.messaging.Message;
 import org.axonframework.messaging.MessageDispatchInterceptor;
+import org.axonframework.messaging.MessageDispatchInterceptorChain;
 import org.axonframework.messaging.MessageHandlerInterceptor;
-import org.axonframework.messaging.unitofwork.UnitOfWork;
+import org.axonframework.messaging.MessageHandlerInterceptorChain;
+import org.axonframework.messaging.MessageStream;
+import org.axonframework.messaging.unitofwork.ProcessingContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.List;
-import java.util.function.BiFunction;
-import javax.annotation.Nonnull;
-
-import static java.lang.String.format;
-
 /**
- * {@link MessageDispatchInterceptor} and {@link MessageHandlerInterceptor} implementation that logs dispatched and
- * incoming messages, and their result, to a SLF4J logger. Allows configuration of the name under which the logger
- * should log the statements.
+ * A {@link MessageDispatchInterceptor} and {@link MessageHandlerInterceptor} implementation that logs dispatched and
+ * incoming messages, and their result, to a {@link Logger}.
+ * <p>
+ * Allows configuration of the name under which the logger should log the statements.
  * <p/>
  * Dispatched, incoming messages and successful executions are logged at the {@code INFO} level. Processing errors are
  * logged using the {@code WARN} level.
  *
+ * @param <M> The message type this interceptor can process.
  * @author Allard Buijze
- * @since 0.6
+ * @since 0.6.0
  */
-public class LoggingInterceptor<T extends Message<?>>
-        implements MessageDispatchInterceptor<T>, MessageHandlerInterceptor<T> {
+public class LoggingInterceptor<M extends Message>
+        implements MessageDispatchInterceptor<M>, MessageHandlerInterceptor<M> {
 
     private final Logger logger;
 
     /**
-     * Initialize the LoggingInterceptor with the given {@code loggerName}. The actual logging implementation will
-     * use this name to decide the appropriate log level and location. See the documentation of your logging
-     * implementation for more information.
+     * Initialize the {@code LoggingInterceptor} with the given {@code loggerName}.
+     * <p>
+     * The actual logging implementation will use this name to decide the appropriate log level and location. See the
+     * documentation of your logging implementation for more information.
      *
-     * @param loggerName the name of the logger
+     * @param loggerName The name of the logger.
      */
     public LoggingInterceptor(String loggerName) {
         this.logger = LoggerFactory.getLogger(loggerName);
     }
 
     /**
-     * Initialize the LoggingInterceptor with the default logger name, which is the fully qualified class name of this
-     * logger.
+     * Initialize the {@code LoggingInterceptor} with the default logger name, which is the fully qualified class name
+     * of this logger.
      *
      * @see LoggingInterceptor#LoggingInterceptor(String)
      */
@@ -69,27 +70,31 @@ public class LoggingInterceptor<T extends Message<?>>
 
     @Override
     @Nonnull
-    public BiFunction<Integer, T, T> handle(@Nonnull List<? extends T> messages) {
-        return (i, message) -> {
-            logger.info("Dispatched messages: [{}]", message.getPayloadType().getSimpleName());
-            return message;
-        };
+    public MessageStream<?> interceptOnDispatch(@Nonnull M message,
+                                                @Nullable ProcessingContext context,
+                                                @Nonnull MessageDispatchInterceptorChain<M> interceptorChain) {
+        logger.info("Dispatched message: [{}]", message.type().name());
+        return interceptorChain.proceed(message, context);
     }
 
     @Override
-    public Object handle(@Nonnull UnitOfWork<? extends T> unitOfWork, @Nonnull InterceptorChain interceptorChain)
-            throws Exception {
-        T message = unitOfWork.getMessage();
-        logger.info("Incoming message: [{}]", message.getPayloadType().getSimpleName());
-        try {
-            Object returnValue = interceptorChain.proceed();
-            logger.info("[{}] executed successfully with a [{}] return value",
-                        message.getPayloadType().getSimpleName(),
-                        returnValue == null ? "null" : returnValue.getClass().getSimpleName());
-            return returnValue;
-        } catch (Exception t) {
-            logger.warn("[{}] execution failed:", message.getPayloadType().getSimpleName(), t);
-            throw t;
-        }
+    @Nonnull
+    public MessageStream<?> interceptOnHandle(@Nonnull M message,
+                                              @Nonnull ProcessingContext context,
+                                              @Nonnull MessageHandlerInterceptorChain<M> interceptorChain) {
+        logger.info("Incoming message: [{}]", message.type().name());
+        return interceptorChain.proceed(message, context)
+                               .map(returnValue -> {
+                                   logger.info("[{}] executed successfully with a [{}] return value",
+                                               message.type().name(),
+                                               returnValue.message().payloadType().getSimpleName());
+                                   return returnValue;
+                               })
+                               .onErrorContinue(e -> {
+                                   logger.warn("[{}] resulted in an error",
+                                               message.type().name(),
+                                               e);
+                                   return MessageStream.failed(e);
+                               });
     }
 }

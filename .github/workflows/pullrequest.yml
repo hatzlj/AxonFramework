@@ -1,50 +1,49 @@
-name: Axon Framework
+name: Axon Framework (Pull Request)
 
 on:
   pull_request:
     paths-ignore:
       - 'docs/**'
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     name: Test and Build on JDK ${{ matrix.java-version }}
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
         include:
-          - java-version: 8
-            sonar-enabled: false
-          - java-version: 11
-            sonar-enabled: false
-          - java-version: 17
-            sonar-enabled: true
           - java-version: 21
-            sonar-enabled: false
+            sonar-enabled: true
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up JDK ${{ matrix.java-version }}
-        uses: actions/setup-java@v4.4.0
+        uses: actions/setup-java@v5.0.0
         with:
           distribution: 'zulu'
           java-version: ${{ matrix.java-version }}
           cache: "maven"
-          server-id: sonatype
+          server-id: central
           server-username: MAVEN_USERNAME
           server-password: MAVEN_PASSWORD
 
       - name: Regular Build
         if: ${{ !matrix.sonar-enabled }}
         run: |
-          ./mvnw -B -U -Dstyle.color=always -Possrh -Pintegration-test -Djacoco.skip=true clean verify
+          ./mvnw -B -U -Dstyle.color=always -Possrh -Pintegration-test -Djacoco.skip=true -Dsurefire.rerunFailingTestsCount=5 clean verify
 
       - name: Build with Coverage reports
         if: matrix.sonar-enabled
         run: |
-          ./mvnw -B -U -Dstyle.color=always -Possrh -Dcoverage clean verify
+          ./mvnw -B -U -Dstyle.color=always -Possrh -Dcoverage -Dsurefire.rerunFailingTestsCount=5 clean verify
 
       - name: Sonar Analysis
         if: ${{ success() && matrix.sonar-enabled && github.event.pull_request.head.repo.full_name == github.repository }}

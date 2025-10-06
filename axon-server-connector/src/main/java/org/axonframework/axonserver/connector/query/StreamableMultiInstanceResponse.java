@@ -1,11 +1,11 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -19,7 +19,8 @@ package org.axonframework.axonserver.connector.query;
 import io.axoniq.axonserver.connector.ReplyChannel;
 import io.axoniq.axonserver.grpc.query.QueryResponse;
 import org.axonframework.messaging.GenericMessage;
-import org.axonframework.messaging.MetaData;
+import org.axonframework.messaging.MessageType;
+import org.axonframework.messaging.Metadata;
 import org.axonframework.queryhandling.GenericQueryResponseMessage;
 import org.axonframework.queryhandling.QueryResponseMessage;
 
@@ -33,14 +34,14 @@ import static java.util.Collections.emptyIterator;
 /**
  * An implementation of the {@link StreamableResponse} that can stream a {@link List} of results one by one.
  *
- * @param <T> The type of result to be streamed
+ * @param <T> The type of result to be streamed.
  * @author Milan Savic
  * @author Stefan Dragisic
  * @since 4.6.0
  */
 class StreamableMultiInstanceResponse<T> implements StreamableResponse {
 
-    private final QueryResponseMessage<List<T>> resultMessage;
+    private final QueryResponseMessage resultMessage;
     private final Class<T> responseType;
     private final Iterator<T> result;
     private final ReplyChannel<QueryResponse> responseHandler;
@@ -55,13 +56,13 @@ class StreamableMultiInstanceResponse<T> implements StreamableResponse {
     /**
      * Initializing the streamable multi instance result.
      *
-     * @param resultMessage   the result message which payload should be streamed
-     * @param responseType    the type of single item that needs to be streamed
-     * @param responseHandler the {@link ReplyChannel} used for sending items to the Axon Server
-     * @param serializer      the serializer used to serialize items
-     * @param requestId       the identifier of the request these responses refer to
+     * @param resultMessage   The result message which payload should be streamed/
+     * @param responseType    The type of single item that needs to be streamed/
+     * @param responseHandler The {@link ReplyChannel} used for sending items to the Axon Server/
+     * @param serializer      The serializer used to serialize items/
+     * @param requestId       The identifier of the request these responses refer to/
      */
-    public StreamableMultiInstanceResponse(QueryResponseMessage<List<T>> resultMessage,
+    public StreamableMultiInstanceResponse(QueryResponseMessage resultMessage,
                                            Class<T> responseType,
                                            ReplyChannel<QueryResponse> responseHandler,
                                            QuerySerializer serializer,
@@ -71,7 +72,7 @@ class StreamableMultiInstanceResponse<T> implements StreamableResponse {
         this.responseHandler = responseHandler;
         this.serializer = serializer;
         this.requestId = requestId;
-        List<T> payload = resultMessage.getPayload();
+        List<T> payload = (List<T>)resultMessage.payload();
         this.result = payload != null ? payload.iterator() : emptyIterator();
     }
 
@@ -115,18 +116,21 @@ class StreamableMultiInstanceResponse<T> implements StreamableResponse {
     }
 
     private void send() {
-        GenericMessage<?> delegate;
+        GenericMessage delegate;
         if (firstResponseToBeSent.compareAndSet(true, false)) {
-            delegate = new GenericMessage<>(resultMessage.getIdentifier(),
+            delegate = new GenericMessage(resultMessage.identifier(),
+                                            new MessageType(responseType),
+                                            result.next(),
                                             responseType,
-                                            result.next(),
-                                            resultMessage.getMetaData());
+                                            resultMessage.metadata()
+            );
         } else {
-            delegate = new GenericMessage<>(responseType,
+            delegate = new GenericMessage(new MessageType(responseType),
                                             result.next(),
-                                            MetaData.emptyInstance());
+                                            responseType,
+                                            Metadata.emptyInstance());
         }
-        GenericQueryResponseMessage<?> message = new GenericQueryResponseMessage<>(delegate);
+        GenericQueryResponseMessage message = new GenericQueryResponseMessage(delegate);
         responseHandler.send(serializer.serializeResponse(message, requestId));
     }
 }

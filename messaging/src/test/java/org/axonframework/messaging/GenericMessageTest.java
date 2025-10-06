@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,15 +16,14 @@
 
 package org.axonframework.messaging;
 
+import jakarta.annotation.Nullable;
+import org.axonframework.common.ObjectUtils;
 import org.axonframework.eventhandling.GenericEventMessage;
 import org.axonframework.messaging.correlation.ThrowingCorrelationDataProvider;
 import org.axonframework.messaging.unitofwork.CurrentUnitOfWork;
-import org.axonframework.messaging.unitofwork.DefaultUnitOfWork;
-import org.axonframework.messaging.unitofwork.UnitOfWork;
-import org.axonframework.serialization.CannotConvertBetweenTypesException;
-import org.axonframework.serialization.SerializedObject;
-import org.axonframework.serialization.Serializer;
-import org.axonframework.serialization.json.JacksonSerializer;
+import org.axonframework.messaging.unitofwork.LegacyDefaultUnitOfWork;
+import org.axonframework.messaging.unitofwork.LegacyUnitOfWork;
+import org.axonframework.serialization.ConversionException;
 import org.junit.jupiter.api.*;
 
 import java.util.Collections;
@@ -39,16 +38,27 @@ import static org.mockito.Mockito.*;
  *
  * @author Rene de Waele
  */
-class GenericMessageTest {
+class GenericMessageTest extends MessageTestSuite<Message> {
 
-    private final Map<String, ?> correlationData = MetaData.from(Collections.singletonMap("foo", "bar"));
-    private UnitOfWork<?> unitOfWork;
+    private final Map<String, String> correlationData = Metadata.from(Collections.singletonMap("foo", "bar"));
+
+    private LegacyUnitOfWork<?> unitOfWork;
 
     @BeforeEach
     void setUp() {
-        unitOfWork = mock(UnitOfWork.class);
+        unitOfWork = mock(LegacyUnitOfWork.class);
         when(unitOfWork.getCorrelationData()).thenAnswer(invocation -> correlationData);
         CurrentUnitOfWork.set(unitOfWork);
+    }
+
+    @Override
+    protected Message buildDefaultMessage() {
+        return new GenericMessage(TEST_IDENTIFIER, TEST_TYPE, TEST_PAYLOAD, TEST_PAYLOAD_TYPE, TEST_METADATA);
+    }
+
+    @Override
+    protected <P> Message buildMessage(@Nullable P payload) {
+        return new GenericMessage(new MessageType(ObjectUtils.nullSafeTypeOf(payload)), payload);
     }
 
     @AfterEach
@@ -60,52 +70,25 @@ class GenericMessageTest {
 
     @Test
     void correlationDataAddedToNewMessage() {
-        assertEquals(correlationData, new HashMap<>(new GenericMessage<>(new Object()).getMetaData()));
+        Message testMessage = new GenericMessage(new MessageType("message"), new Object());
+        assertEquals(correlationData, new HashMap<>(testMessage.metadata()));
 
-        MetaData newMetaData = MetaData.from(Collections.singletonMap("whatever", new Object()));
-        assertEquals(newMetaData.mergedWith(correlationData),
-                     new GenericMessage<>(new Object(), newMetaData).getMetaData());
+        Metadata newMetadata = Metadata.from(Collections.singletonMap("what", "ever"));
+        Message testMessageWithMetadata =
+                new GenericMessage(new MessageType("message"), new Object(), newMetadata);
+        assertEquals(newMetadata.mergedWith(correlationData), testMessageWithMetadata.metadata());
     }
 
     @Test
-    void messageSerialization() {
-        GenericMessage<String> message = new GenericMessage<>("payload", Collections.singletonMap("key", "value"));
-        Serializer jacksonSerializer = JacksonSerializer.builder().build();
-
-        SerializedObject<String> serializedPayload = message.serializePayload(jacksonSerializer, String.class);
-        SerializedObject<String> serializedMetaData = message.serializeMetaData(jacksonSerializer, String.class);
-
-        assertEquals("\"payload\"", serializedPayload.getData());
-        assertEquals("{\"key\":\"value\",\"foo\":\"bar\"}", serializedMetaData.getData());
-    }
-
-    @Test
-    void asMessageReturnsProvidedMessageAsIs() {
-        GenericMessage<String> testMessage = new GenericMessage<>("payload");
-
-        Message<?> result = GenericMessage.asMessage(testMessage);
-
-        assertEquals(testMessage, result);
-    }
-
-    @Test
-    void asMessageWrapsProvidedObjectsInMessage() {
-        String testPayload = "payload";
-
-        Message<?> result = GenericMessage.asMessage(testPayload);
-
-        assertNotEquals(testPayload, result);
-        assertEquals(testPayload, result.getPayload());
-    }
-
-    @Test
-    void whenCorrelationDataProviderThrowsException_thenCatchException(){
-        unitOfWork = new DefaultUnitOfWork<>(new GenericEventMessage<>("Input 1"));
+    void whenCorrelationDataProviderThrowsException_thenCatchException() {
+        unitOfWork = new LegacyDefaultUnitOfWork<>(
+                new GenericEventMessage(new MessageType("event"), "Input 1")
+        );
         CurrentUnitOfWork.set(unitOfWork);
         unitOfWork.registerCorrelationDataProvider(new ThrowingCorrelationDataProvider());
-        CannotConvertBetweenTypesException exception = new CannotConvertBetweenTypesException("foo");
+        ConversionException exception = new ConversionException("foo");
 
-        Message<?> result = GenericMessage.asMessage(exception);
+        Message result = new GenericMessage(new MessageType("exception"), exception);
 
         assertNotNull(result);
     }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,97 +16,102 @@
 
 package org.axonframework.commandhandling.distributed;
 
-import org.axonframework.commandhandling.CommandBus;
-import org.axonframework.commandhandling.CommandCallback;
+import jakarta.annotation.Nonnull;
+import jakarta.annotation.Nullable;
 import org.axonframework.commandhandling.CommandMessage;
 import org.axonframework.commandhandling.CommandResultMessage;
-import org.axonframework.common.Registration;
-import org.axonframework.messaging.MessageHandler;
-import org.axonframework.messaging.MessageHandlerInterceptorSupport;
-import org.axonframework.messaging.RemoteHandlingException;
+import org.axonframework.common.infra.DescribableComponent;
+import org.axonframework.messaging.QualifiedName;
+import org.axonframework.messaging.unitofwork.ProcessingContext;
 
-import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
-import javax.annotation.Nonnull;
+import java.util.function.BiConsumer;
 
 /**
- * Interface describing the component that remotely connects multiple CommandBus instances.
+ * The {@code CommandBusConnector} interface defines the contract for connecting multiple {@code CommandBus} instances.
+ * It allows for the dispatching of commands across different command bus instances, whether they are local or remote.
+ * <p>
+ * One connector can be wrapped with another through the {@link DelegatingCommandBusConnector}, upon which more
+ * functionality can be added, such as payload conversion or serialization.
  *
  * @author Allard Buijze
- * @since 2.0
+ * @author Mitchell Herrijgers
+ * @author Steven van Beelen
+ * @since 2.0.0
  */
-public interface CommandBusConnector extends MessageHandlerInterceptorSupport<CommandMessage<?>> {
+public interface CommandBusConnector extends DescribableComponent {
 
     /**
-     * Sends the given {@code command} to the node assigned to handle messages with the given {@code routingKey}. The
-     * sender does not expect a reply.
-     * <p/>
-     * If this method throws an exception, the sender is guaranteed that the destination of the command did not receive
-     * it. If the method returns normally, the actual implementation of the connector defines the delivery guarantees.
-     * <p/>
-     * Connectors route the commands based on the given {@code routingKey}. Using the same {@code routingKey} will
-     * result in the command being sent to the same member. Each message must be sent to <em>exactly one member</em>.
+     * Dispatches the given {@code command} to the appropriate command bus, which may be local or remote.
      *
-     * @param destination The member of the network to send the message to
-     * @param command     The command to send to the (remote) member
-     * @throws Exception when an error occurs before or during the sending of the message
+     * @param command           The command message to dispatch.
+     * @param processingContext The processing context for the command.
+     * @return A {@link CompletableFuture} that will complete with the result of the command handling.
      */
-    <C> void send(@Nonnull Member destination, @Nonnull CommandMessage<? extends C> command) throws Exception;
+    @Nonnull
+    CompletableFuture<CommandResultMessage> dispatch(@Nonnull CommandMessage command,
+                                                     @Nullable ProcessingContext processingContext);
 
     /**
-     * Sends the given {@code command} to the node assigned to handle messages with the given {@code routingKey}. The
-     * sender expect a reply, and will be notified of the result in the given {@code callback}.
-     * <p/>
-     * If this method throws an exception, the sender is guaranteed that the destination of the command did not receive
-     * it. If the method returns normally, the actual implementation of the connector defines the delivery guarantees.
-     * Implementations <em>should</em> always invoke the callback with an outcome.
-     * <p/>
-     * If a member's connection was lost, and the result of the command is unclear, the {@link
-     * CommandCallback#onResult(CommandMessage, CommandResultMessage)}} method is invoked with a {@link
-     * RemoteHandlingException} describing the failed connection. A client may choose to resend a command.
-     * <p/>
-     * Connectors route the commands based on the given {@code routingKey}. Using the same {@code routingKey} will
-     * result in the command being sent to the same member.
+     * Subscribes to a command with the given {@code commandName} and a {@code loadFactor}.
      *
-     * @param destination The member of the network to send the message to
-     * @param command     The command to send to the (remote) member
-     * @param callback    The callback
-     * @param <C>         The type of object expected as command
-     * @param <R>         The type of object expected as result of the command
-     * @throws Exception when an error occurs before or during the sending of the message
+     * @param commandName The {@link QualifiedName} of the command to subscribe to.
+     * @param loadFactor  The load factor for the command, which can be used to control the distribution of command
+     *                    handling across multiple instances. The load factor should be a positive integer.
      */
-    <C, R> void send(@Nonnull Member destination, @Nonnull CommandMessage<C> command,
-                     @Nonnull CommandCallback<? super C, R> callback)
-            throws Exception;
+    void subscribe(@Nonnull QualifiedName commandName, int loadFactor);
 
     /**
-     * Subscribes a command message handler for commands with given {@code commandName}.
+     * Unsubscribes from a command with the given {@code commandName}.
      *
-     * @param commandName the command name. Usually this equals the fully qualified class name of the command.
-     * @param handler     the handler to subscribe
-     * @return a handle that can be used to end the subscription
+     * @param commandName The {@link QualifiedName} of the command to unsubscribe from.
+     * @return {@code true} if the unsubscription was successful, {@code false} otherwise.
      */
-    Registration subscribe(@Nonnull String commandName, @Nonnull MessageHandler<? super CommandMessage<?>> handler);
+    boolean unsubscribe(@Nonnull QualifiedName commandName);
 
     /**
-     * Return an {@link Optional} containing the {@link CommandBus} which is used by this {@link CommandBusConnector} to
-     * dispatch local and incoming {@link CommandMessage}s on. It is <b>highly recommended</b> to implement this method
-     * to ensure an actual CommandBus is provided instead of a default {@link Optional#empty()}.
+     * Registers a handler that will be called when an incoming command is received. The handler should process the
+     * command and call the provided {@code ResultCallback} to indicate success or failure.
      *
-     * @return an {@link Optional} containing the {@link CommandBus} which is used by this {@link CommandBusConnector}
-     * to dispatch local and incoming {@link CommandMessage}s on
+     * @param handler A {@link BiConsumer} that takes a {@link CommandMessage} and a {@link ResultCallback}.
      */
-    default Optional<CommandBus> localSegment() {
-        return Optional.empty();
+    void onIncomingCommand(@Nonnull Handler handler);
+
+    /**
+     * A functional interface representing a handler for incoming command messages. The handler processes the command
+     * and uses the provided {@link ResultCallback} to report the result.
+     */
+    @FunctionalInterface
+    interface Handler {
+
+        /**
+         * Handles the incoming command message.
+         *
+         * @param commandMessage The command message to handle.
+         * @param callback       The callback to invoke with the result of handling the command.
+         */
+        void handle(@Nonnull CommandMessage commandMessage, @Nonnull ResultCallback callback);
     }
 
     /**
-     * Initiate the shutdown of a {@link CommandBusConnector}. {@link CommandMessage}s should no longer be dispatched
-     * after this method has been invoked.
-     *
-     * @return a {@link CompletableFuture} indicating when all previously sent commands are completed
+     * A callback interface for handling the result of command processing. It provides methods to indicate success or
+     * failure of command handling.
      */
-    default CompletableFuture<Void> initiateShutdown() {
-        return CompletableFuture.completedFuture(null);
+    interface ResultCallback {
+
+        /**
+         * Called when the command processing is successful.
+         *
+         * @param resultMessage The result message containing the outcome of the command processing. If the message
+         *                      handling yielded no result message, a {@code null} should be passed.
+         */
+        void onSuccess(@Nullable CommandResultMessage resultMessage);
+
+        /**
+         * Called when an error occurs during command processing.
+         *
+         * @param cause The exception that caused the error.
+         */
+        void onError(@Nonnull Throwable cause);
     }
 }

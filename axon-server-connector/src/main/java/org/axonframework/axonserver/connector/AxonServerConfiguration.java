@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2024. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,23 +17,15 @@
 package org.axonframework.axonserver.connector;
 
 import io.axoniq.axonserver.connector.AxonServerConnectionFactory;
-import io.axoniq.axonserver.grpc.control.NodeInfo;
-import org.axonframework.axonserver.connector.event.axon.AxonServerEventStore;
-import org.axonframework.axonserver.connector.event.axon.PersistentStreamSequencingPolicyProvider;
-import org.axonframework.axonserver.connector.event.util.EventCipher;
-import org.axonframework.eventhandling.EventMessage;
-import org.axonframework.eventhandling.EventProcessor;
-import org.axonframework.eventhandling.StreamingEventProcessor;
+import org.axonframework.eventhandling.processors.EventProcessor;
+import org.axonframework.eventhandling.processors.streaming.StreamingEventProcessor;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.lang.management.ManagementFactory;
-import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 /**
  * Configuration class provided configurable fields and defaults for anything Axon Server related.
@@ -97,14 +89,6 @@ public class AxonServerConfiguration {
     private boolean sslEnabled;
 
     /**
-     * Initial number of permits send for message streams (events, commands, queries).
-     *
-     * @deprecated In favor of {@code permits}.
-     */
-    @Deprecated
-    private Integer initialNrOfPermits;
-
-    /**
      * The initial number of permits send for message streams (events, commands, queries). Defaults to {@code 5000}
      * permits.
      */
@@ -152,6 +136,12 @@ public class AxonServerConfiguration {
     private FlowControlConfiguration commandFlowControl;
 
     /**
+     * A toggle dictating whether to invoke query handlers directly if they are registered in the local environment.
+     * Defaults to {@code false}.
+     */
+    private boolean shortcutQueriesToLocalHandlers = false;
+
+    /**
      * The number of threads executing commands. Defaults to {@code 10} threads.
      */
     private int commandThreads = 10;
@@ -160,6 +150,11 @@ public class AxonServerConfiguration {
      * The number of threads executing queries. Defaults to {@code 10} threads.
      */
     private int queryThreads = 10;
+
+    /**
+     * The number of threads handling query responses. Defaults to {@code 5} threads.
+     */
+    private int queryResponseThreads = 5;
 
     /**
      * The interval (in ms.) application sends status updates on event processors to Axon Server. Defaults to
@@ -172,16 +167,6 @@ public class AxonServerConfiguration {
      * Defaults to {@code 5000} milliseconds.
      */
     private int processorsNotificationInitialDelay = 5000;
-
-    /**
-     * An {@link EventCipher} which is used to encrypt and decrypt events and snapshots. Defaults to
-     * {@link EventCipher#EventCipher()}.
-     *
-     * @deprecated Through use of the <a href="https://github.com/AxonIQ/axonserver-connector-java">Axon Server Java
-     * Connector</a> project.
-     */
-    @Deprecated
-    private EventCipher eventCipher = new EventCipher();
 
     /**
      * The timeout (in ms) for keep alive requests. Defaults to {@code 5000} milliseconds.
@@ -200,57 +185,17 @@ public class AxonServerConfiguration {
     private int snapshotPrefetch = 1;
 
     /**
-     * Indicates whether the download advice message should be suppressed, even when default connection properties
-     * (which are generally only used in DEV mode) are used. Defaults to false.
-     *
-     * @deprecated Through use of the <a href="https://github.com/AxonIQ/axonserver-connector-java">Axon Server Java
-     * Connector</a> project, which enables the download message in absence of configured servers.
-     */
-    @Deprecated
-    private boolean suppressDownloadMessage = false;
-
-    /**
-     * The gRPC max inbound message size. Defaults to {@code 0}, keeping the default value from the connector.
+     * The gRPC max inbound and outbound message size. Defaults to {@code 0}, keeping the default value (4,194,304 or
+     * 4MiB) from the connector. Upon messages exceeding this size, an exception is thrown to prevent unexpected
+     * disconnections.
      */
     private int maxMessageSize = 0;
 
     /**
-     * The timeout (in milliseconds) to wait for response on commit. Defaults to {@code 10_000} milliseconds.
+     * The threshold (in percentage of 0-1) of the max message size at which a warning should be logged. Defaults to
+     * {@code 0.8}.
      */
-    private int commitTimeout = 10_000;
-
-    /**
-     * Flag that allows blacklisting of Event types to be disabled. Disabling this may have serious performance impact,
-     * as it requires all messages from Axon Server to be sent to clients, even if a Client is unable to process the
-     * message.
-     * <p>
-     * Default is to have blacklisting enabled.
-     *
-     * @deprecated In favor of the {@code eventBlockListingEnabled} property.
-     */
-    @Deprecated
-    private boolean disableEventBlacklisting = false;
-
-    /**
-     * Flag that allows block-listing of event types to be enabled.
-     * <p>
-     * Disabling this may have serious performance impact, as it requires all
-     * {@link EventMessage events} from Axon Server to be sent to clients, even if a
-     * client is unable to process the event. Default is to have block-listing enabled.
-     */
-    private boolean eventBlockListingEnabled = true;
-
-    /**
-     * The number of messages that may be in-transit on the network/grpc level when streaming data from the server.
-     * <p>
-     * Setting this to 0 (or a negative value) will disable buffering, and requires each message sent by the server to
-     * be acknowledged before the next message may be sent. Defaults to 500.
-     *
-     * @deprecated This property is no longer used through adjustments in the <a
-     * href="https://github.com/AxonIQ/axonserver-connector-java">Axon Server Java Connector</a> project.
-     */
-    @Deprecated
-    private int maxGrpcBufferedMessages = 500;
+    private double maxMessageSizeWarningThreshold = 0.8;
 
     /**
      * An {@code int} representing the fixed value of load factor sent to Axon Server for any command's subscription if
@@ -298,8 +243,7 @@ public class AxonServerConfiguration {
 
     /**
      * Defines the number of threads that should be used for connection management activities by the
-     * {@link AxonServerConnectionFactory} used by the
-     * {@link AxonServerConnectionManager}.
+     * {@link AxonServerConnectionFactory} used by the {@link AxonServerConnectionManager}.
      * <p>
      * This includes activities related to connecting to Axon Server, setting up instruction streams, sending and
      * validating heartbeats, etc.
@@ -321,7 +265,7 @@ public class AxonServerConfiguration {
 
     /**
      * Properties describing the settings for the
-     * {@link AxonServerEventStore EventStore}.
+     * {@link org.axonframework.axonserver.connector.event.AxonServerEventStorageEngine AxonServerEventStorageEngine}.
      */
     private EventStoreConfiguration eventStoreConfiguration = new EventStoreConfiguration();
 
@@ -329,7 +273,17 @@ public class AxonServerConfiguration {
      * The configuration of each of the persistent streams. The key is the identifier of the message source, the value
      * represents the settings to use for the related persistent stream.
      */
-    private final Map<String, PersistentStreamSettings> persistentStreams = new HashMap<>();
+//    private final Map<String, PersistentStreamSettings> persistentStreams = new HashMap<>();
+
+    /**
+     * A toggle dictating whether to create persistent streams for all processing groups. Defaults to {@code false}.
+     */
+    private boolean autoPersistentStreamsEnable = false;
+
+    /**
+     * Settings that are used to create persistent stream definition.
+     */
+//    private PersistentStreamSettings autoPersistentStreamsSettings = new PersistentStreamSettings();
 
     /**
      * Instantiate a {@link Builder} to create an {@link AxonServerConfiguration}.
@@ -358,6 +312,14 @@ public class AxonServerConfiguration {
         return enabled;
     }
 
+    public boolean isShortcutQueriesToLocalHandlers() {
+        return shortcutQueriesToLocalHandlers;
+    }
+
+    public void setShortcutQueriesToLocalHandlers(boolean shortcutQueriesToLocalHandlers) {
+        this.shortcutQueriesToLocalHandlers = shortcutQueriesToLocalHandlers;
+    }
+
     /**
      * Set whether (automatic) configuration of the Axon Server Connector is enabled. When {@code false}, the connector
      * will not be implicitly be configured. Defaults to {@code true}.
@@ -381,25 +343,6 @@ public class AxonServerConfiguration {
     }
 
     /**
-     * A list of {@link NodeInfo} instances based on the comma separated list of {@link #getServers()}.
-     *
-     * @return A list of {@link NodeInfo} instances based on the comma separated list of {@link #getServers()}.
-     * @deprecated In favor of the {@link AxonServerConnectionManager} itself being in charge of parsing the
-     * {@link #getServers()} list into a {@link NodeInfo} collection.
-     */
-    @Deprecated
-    public List<NodeInfo> routingServers() {
-        String[] serverArr = servers.split(",");
-        return Arrays.stream(serverArr).map(server -> {
-            String[] s = server.trim().split(":");
-            if (s.length > 1) {
-                return NodeInfo.newBuilder().setHostName(s[0]).setGrpcPort(Integer.parseInt(s[1])).build();
-            }
-            return NodeInfo.newBuilder().setHostName(s[0]).setGrpcPort(DEFAULT_GRPC_PORT).build();
-        }).collect(Collectors.toList());
-    }
-
-    /**
      * Set the comma separated list of Axon Server servers. Each element is hostname or hostname:grpcPort. When no
      * grpcPort is specified, default port 8124 is used.
      *
@@ -417,6 +360,32 @@ public class AxonServerConfiguration {
     public String getClientId() {
         return clientId;
     }
+
+    public boolean isAutoPersistentStreamsEnable() {
+        return autoPersistentStreamsEnable;
+    }
+
+    public void setAutoPersistentStreamsEnable(boolean autoPersistentStreamsEnable) {
+        this.autoPersistentStreamsEnable = autoPersistentStreamsEnable;
+    }
+
+    /**
+     * Return the settings for all persistent streams that will be created automatically.
+     * <p>
+     * Each persistent stream will be named according to the following pattern:
+     * <p>
+     * processingGroupName + "-stream"
+     *
+     * @return Return the settings for all persistent streams that will be created automatically.
+     */
+//    public PersistentStreamSettings getAutoPersistentStreamsSettings() {
+//        return autoPersistentStreamsSettings;
+//    }
+
+//    public void setAutoPersistentStreamsSettings(
+//            PersistentStreamSettings autoPersistentStreamsSettings) {
+//        this.autoPersistentStreamsSettings = autoPersistentStreamsSettings;
+//    }
 
     /**
      * Sets the client identifier as it registers itself to Axon Server, must be unique.
@@ -527,22 +496,6 @@ public class AxonServerConfiguration {
     }
 
     /**
-     * @deprecated In favor of {@link #getPermits()}
-     */
-    @Deprecated
-    public Integer getInitialNrOfPermits() {
-        return initialNrOfPermits;
-    }
-
-    /**
-     * @deprecated In favor of {@link #setPermits(Integer)}
-     */
-    @Deprecated
-    public void setInitialNrOfPermits(Integer initialNrOfPermits) {
-        this.permits = initialNrOfPermits;
-    }
-
-    /**
      * The initial number of permits send for message streams (events, commands, queries). Defaults to {@code 5000}
      * permits.
      *
@@ -618,26 +571,6 @@ public class AxonServerConfiguration {
      */
     public void setNewPermitsThreshold(Integer newPermitsThreshold) {
         this.newPermitsThreshold = newPermitsThreshold;
-    }
-
-    /**
-     * @deprecated Through use of the <a href="https://github.com/AxonIQ/axonserver-connector-java">Axon Server Java
-     * Connector</a> project.
-     */
-    @Deprecated
-    public EventCipher getEventCipher() {
-        return eventCipher;
-    }
-
-    /**
-     * @deprecated Through use of the <a href="https://github.com/AxonIQ/axonserver-connector-java">Axon Server Java
-     * Connector</a> project.
-     */
-    @Deprecated
-    private void setEventSecretKey(String key) {
-        if (key != null && !key.isEmpty()) {
-            eventCipher = new EventCipher(key.getBytes(StandardCharsets.US_ASCII));
-        }
     }
 
     /**
@@ -774,6 +707,24 @@ public class AxonServerConfiguration {
     }
 
     /**
+     * The number of threads executing query responses. Defaults to {@code 5} threads.
+     *
+     * @return The number of threads executing query responses.
+     */
+    public int getQueryResponseThreads() {
+        return queryResponseThreads;
+    }
+
+    /**
+     * Sets the number of threads executing query responses. Defaults to {@code 5} threads.
+     *
+     * @param queryResponseThreads The number of threads executing query responses.
+     */
+    public void setQueryResponseThreads(int queryResponseThreads) {
+        this.queryResponseThreads = queryResponseThreads;
+    }
+
+    /**
      * The interval (in ms.) application sends status updates on event processors to Axon Server. Defaults to
      * {@code 500} milliseconds.
      *
@@ -873,24 +824,6 @@ public class AxonServerConfiguration {
     }
 
     /**
-     * @deprecated Through use of the <a href="https://github.com/AxonIQ/axonserver-connector-java">Axon Server Java
-     * Connector</a> project, which enables the download message in absence of configured servers.
-     */
-    @Deprecated
-    public boolean getSuppressDownloadMessage() {
-        return suppressDownloadMessage;
-    }
-
-    /**
-     * @deprecated Through use of the <a href="https://github.com/AxonIQ/axonserver-connector-java">Axon Server Java
-     * Connector</a> project, which enables the download message in absence of configured servers.
-     */
-    @Deprecated
-    public void setSuppressDownloadMessage(boolean suppressDownloadMessage) {
-        this.suppressDownloadMessage = suppressDownloadMessage;
-    }
-
-    /**
      * The gRPC max inbound message size. Defaults to {@code 0}, keeping the default value from the connector.
      *
      * @return The gRPC max inbound message size.
@@ -909,81 +842,25 @@ public class AxonServerConfiguration {
     }
 
     /**
-     * The timeout (in milliseconds) to wait for response on commit. Defaults to {@code 10_000} milliseconds.
+     * The threshold (in percentage of 0-1) of the max message size at which a warning should be logged. Defaults to
+     * {@code 0.8}.
      *
-     * @return The timeout (in milliseconds) to wait for response on commit.
+     * @return The threshold (in percentage of 0 to 1) of the max outbound message size at which a warning should be
+     * logged.
      */
-    public int getCommitTimeout() {
-        return commitTimeout;
+    public double getMaxMessageSizeWarningThreshold() {
+        return maxMessageSizeWarningThreshold;
     }
 
     /**
-     * Sets the timeout (in milliseconds) to wait for response on commit. Defaults to {@code 10_000} milliseconds.
+     * The threshold (in percentage of 0-1) of the max message size at which a warning should be logged. Defaults to
+     * {@code 0.8}.
      *
-     * @param commitTimeout The timeout (in milliseconds) to wait for response on commit.
+     * @param maxMessageSizeWarningThreshold The threshold (in percentage of 0 to 1) of the max outbound message size at
+     *                                       which a warning should be logged.
      */
-    public void setCommitTimeout(int commitTimeout) {
-        this.commitTimeout = commitTimeout;
-    }
-
-    /**
-     * @deprecated In favor of {@link #setEventBlockListingEnabled(boolean)}.
-     */
-    @Deprecated
-    public boolean isDisableEventBlacklisting() {
-        return disableEventBlacklisting;
-    }
-
-    /**
-     * @deprecated In favor of {@link #setEventBlockListingEnabled(boolean)}.
-     */
-    @Deprecated
-    public void setDisableEventBlacklisting(boolean disableEventBlacklisting) {
-        this.eventBlockListingEnabled = !disableEventBlacklisting;
-    }
-
-    /**
-     * Flag that allows block-listing of event types to be enabled.
-     * <p>
-     * Disabling this may have serious performance impact, as it requires all
-     * {@link EventMessage events} from Axon Server to be sent to clients, even if a
-     * client is unable to process the event. Default is to have block-listing enabled.
-     *
-     * @return Flag that allows block-listing of event types to be enabled.
-     */
-    public boolean isEventBlockListingEnabled() {
-        return eventBlockListingEnabled;
-    }
-
-    /**
-     * Sets flag that allows block-listing of event types to be enabled.
-     * <p>
-     * Disabling this may have serious performance impact, as it requires all
-     * {@link EventMessage events} from Axon Server to be sent to clients, even if a
-     * client is unable to process the event. Default is to have block-listing enabled.
-     *
-     * @param eventBlockListingEnabled Flag that allows block-listing of event types to be enabled.
-     */
-    public void setEventBlockListingEnabled(boolean eventBlockListingEnabled) {
-        this.eventBlockListingEnabled = eventBlockListingEnabled;
-    }
-
-    /**
-     * @deprecated This property is no longer used through adjustments in the <a
-     * href="https://github.com/AxonIQ/axonserver-connector-java">Axon Server Java Connector</a> project.
-     */
-    @Deprecated
-    public int getMaxGrpcBufferedMessages() {
-        return maxGrpcBufferedMessages;
-    }
-
-    /**
-     * @deprecated This property is no longer used through adjustments in the <a
-     * href="https://github.com/AxonIQ/axonserver-connector-java">Axon Server Java Connector</a> project.
-     */
-    @Deprecated
-    public void setMaxGrpcBufferedMessages(int maxGrpcBufferedMessages) {
-        this.maxGrpcBufferedMessages = maxGrpcBufferedMessages;
+    public void setMaxMessageSizeWarningThreshold(double maxMessageSizeWarningThreshold) {
+        this.maxMessageSizeWarningThreshold = maxMessageSizeWarningThreshold;
     }
 
     /**
@@ -993,6 +870,7 @@ public class AxonServerConfiguration {
      * @return An {@code int} representing the fixed value of load factor sent to Axon Server for any command's
      * subscription if no specific implementation of CommandLoadFactorProvider is configured.
      */
+    // TODO #3074 Ensure this value is taken into account for defaults
     public int getCommandLoadFactor() {
         return commandLoadFactor;
     }
@@ -1128,8 +1006,7 @@ public class AxonServerConfiguration {
 
     /**
      * The number of threads that should be used for connection management activities by the
-     * {@link AxonServerConnectionFactory} used by the
-     * {@link AxonServerConnectionManager}.
+     * {@link AxonServerConnectionFactory} used by the {@link AxonServerConnectionManager}.
      * <p>
      * This includes activities related to connecting to Axon Server, setting up instruction streams, sending and
      * validating heartbeats, etc.
@@ -1137,8 +1014,7 @@ public class AxonServerConfiguration {
      * Defaults to a pool size of {@code 2} threads.
      *
      * @return The number of threads that should be used for connection management activities by the
-     * {@link AxonServerConnectionFactory} used by the
-     * {@link AxonServerConnectionManager}.
+     * {@link AxonServerConnectionFactory} used by the {@link AxonServerConnectionManager}.
      */
     public int getConnectionManagementThreadPoolSize() {
         return connectionManagementThreadPoolSize;
@@ -1146,8 +1022,7 @@ public class AxonServerConfiguration {
 
     /**
      * Define the number of threads that should be used for connection management activities by the
-     * {@link AxonServerConnectionFactory} used by the
-     * {@link AxonServerConnectionManager}.
+     * {@link AxonServerConnectionFactory} used by the {@link AxonServerConnectionManager}.
      * <p>
      * This includes activities related to connecting to Axon Server, setting up instruction streams, sending and
      * validating heartbeats, etc.
@@ -1155,9 +1030,8 @@ public class AxonServerConfiguration {
      * Defaults to a pool size of {@code 2} threads.
      *
      * @param connectionManagementThreadPoolSize The number of threads that should be used for connection management
-     *                                           activities by the
-     *                                           {@link AxonServerConnectionFactory} used
-     *                                           by the {@link AxonServerConnectionManager}.
+     *                                           activities by the {@link AxonServerConnectionFactory} used by the
+     *                                           {@link AxonServerConnectionManager}.
      */
     public void setConnectionManagementThreadPoolSize(int connectionManagementThreadPoolSize) {
         this.connectionManagementThreadPoolSize = connectionManagementThreadPoolSize;
@@ -1227,9 +1101,9 @@ public class AxonServerConfiguration {
      *
      * @return The settings for each of the configured persistent streams, by name.
      */
-    public Map<String, PersistentStreamSettings> getPersistentStreams() {
-        return persistentStreams;
-    }
+//    public Map<String, PersistentStreamSettings> getPersistentStreams() {
+//        return persistentStreams;
+//    }
 
     /**
      * Configuration class for Flow Control of specific message types.
@@ -1238,14 +1112,6 @@ public class AxonServerConfiguration {
      * @since 4.3
      */
     public static class FlowControlConfiguration {
-
-        /**
-         * Initial number of permits send for message streams (events, commands, queries).
-         *
-         * @deprecated In favor of {@code permits}.
-         */
-        @Deprecated
-        private Integer initialNrOfPermits;
 
         /**
          * The initial number of permits send for message streams (events, commands, queries).
@@ -1282,22 +1148,6 @@ public class AxonServerConfiguration {
             this.permits = permits;
             this.nrOfNewPermits = nrOfNewPermits;
             this.newPermitsThreshold = newPermitsThreshold;
-        }
-
-        /**
-         * @deprecated In favor of {@link #getPermits()}.
-         */
-        @Deprecated
-        public Integer getInitialNrOfPermits() {
-            return this.permits;
-        }
-
-        /**
-         * @deprecated In favor of {@link #setPermits(Integer)}.
-         */
-        @Deprecated
-        public void setInitialNrOfPermits(Integer initialNrOfPermits) {
-            this.permits = initialNrOfPermits;
         }
 
         /**
@@ -1490,8 +1340,8 @@ public class AxonServerConfiguration {
              * The load balancing strategy tells Axon Server how to share the event handling load among all available
              * application instances running this event processor, by moving segments from one instance to another. Note
              * that load balancing is <b>only</b> supported for
-             * {@link StreamingEventProcessor StreamingEventProcessors}, as only
-             * {@code StreamingEventProcessors} are capable of splitting the event handling load in segments.
+             * {@link StreamingEventProcessor StreamingEventProcessors}, as only {@code StreamingEventProcessors} are
+             * capable of splitting the event handling load in segments.
              * <p>
              * As the strategies names may change per Axon Server version it is recommended to check the documentation
              * for the possible strategies.
@@ -1639,26 +1489,6 @@ public class AxonServerConfiguration {
             return this;
         }
 
-        /**
-         * @deprecated Through use of the <a href="https://github.com/AxonIQ/axonserver-connector-java">Axon Server Java
-         * Connector</a> project.
-         */
-        @Deprecated
-        public Builder setEventSecretKey(String key) {
-            instance.setEventSecretKey(key);
-            return this;
-        }
-
-        /**
-         * @deprecated Through use of the <a href="https://github.com/AxonIQ/axonserver-connector-java">Axon Server Java
-         * Connector</a> project.
-         */
-        @Deprecated
-        public Builder eventCipher(EventCipher eventCipher) {
-            instance.eventCipher = eventCipher;
-            return this;
-        }
-
         public Builder maxMessageSize(int maxMessageSize) {
             instance.maxMessageSize = maxMessageSize;
             return this;
@@ -1688,16 +1518,6 @@ public class AxonServerConfiguration {
             return this;
         }
 
-        /**
-         * @deprecated Through use of the <a href="https://github.com/AxonIQ/axonserver-connector-java">Axon Server Java
-         * Connector</a> project, which enables the download message in absence of configured servers.
-         */
-        @Deprecated
-        public Builder suppressDownloadMessage() {
-            instance.setSuppressDownloadMessage(true);
-            return this;
-        }
-
         public Builder componentName(String componentName) {
             instance.setComponentName(componentName);
             return this;
@@ -1714,237 +1534,238 @@ public class AxonServerConfiguration {
         }
     }
 
-    public static class PersistentStreamSettings {
-
-        private static final String DEFAULT_SEQUENCING_POLICY = PersistentStreamSequencingPolicyProvider.SEQUENTIAL_PER_AGGREGATE_POLICY;
-
-        /**
-         * The number of segments for the persistent stream if it needs to be created. Defaults to 1.
-         */
-        private int initialSegmentCount = 1;
-
-        /**
-         * The number of threads used to process tasks (e.g. event handling) for the persistent stream. Defaults to 1.
-         */
-        private int threadCount = 1;
-
-        /**
-         * The sequencing policy to use for the persistent stream.
-         * <p>
-         * Supported sequencing policies are:
-         * <ul>
-         *     <li>{@link PersistentStreamSequencingPolicyProvider#SEQUENTIAL_PER_AGGREGATE_POLICY} (default)</li>
-         *     <li>{@link PersistentStreamSequencingPolicyProvider#FULL_CONCURRENCY_POLICY}</li>
-         *     <li>{@link PersistentStreamSequencingPolicyProvider#SEQUENTIAL_POLICY}</li>
-         *     <li>{@link PersistentStreamSequencingPolicyProvider#PROPERTY_SEQUENCING_POLICY}</li>
-         *     <li>{@link PersistentStreamSequencingPolicyProvider#META_DATA_SEQUENCING_POLICY}</li>
-         * </ul>
-         */
-        private String sequencingPolicy = DEFAULT_SEQUENCING_POLICY;
-
-        /**
-         * Parameters specified for the sequencing policy.
-         */
-        private List<String> sequencingPolicyParameters = new LinkedList<>();
-
-        /**
-         * Expression to filter out events in a persistent stream, expecting the Axon Server Query Language as its
-         * syntax.
-         * <p>
-         * Note that it is <b>not possible</b> to change the filter once the persistent stream has been created! When
-         * doing so, Axon Server will typically throw an {@code AXONIQ-0001} exception.
-         */
-        private String filter;
-
-        /**
-         * The name for the persistent stream.
-         */
-        private String name;
-
-        /**
-         * The maximum number of events to process in a single transaction when reading a persistent stream. Defaults to
-         * 1.
-         */
-        private int batchSize = 1;
-
-        /**
-         * The initial token for the persistent stream. This can be a global sequence in the event store or keyword
-         * {@code "HEAD"} or {@code "TAIL"}. Defaults to {@code "TAIL"}.
-         */
-        private String initialPosition = "TAIL";
-
-        /**
-         * The number of segments for the persistent stream if it needs to be created.
-         *
-         * @return the number of segments for the persistent stream if it needs to be created
-         */
-        public int getInitialSegmentCount() {
-            return initialSegmentCount;
-        }
-
-        /**
-         * Sets the number of segments for the persistent stream if it needs to be created.
-         *
-         * @param initialSegmentCount the number of segments
-         */
-        public void setInitialSegmentCount(int initialSegmentCount) {
-            this.initialSegmentCount = initialSegmentCount;
-        }
-
-        /**
-         * The number of threads used to process tasks (e.g. event handling) for the persistent stream. Defaults to 1.
-         *
-         * @return The number of threads used to process tasks (e.g. event handling) for the persistent stream.
-         */
-        public int getThreadCount() {
-            return threadCount;
-        }
-
-        /**
-         * Sets the number of threads used to process tasks (e.g. event handling) for the persistent stream.
-         *
-         * @param threadCount The number of threads used to process tasks (e.g. event handling) for the persistent
-         *                    stream.
-         */
-        public void setThreadCount(int threadCount) {
-            this.threadCount = threadCount;
-        }
-
-        /**
-         * The sequencing policy to use for the persistent stream.
-         *
-         * @return the sequencing policy name
-         */
-        public String getSequencingPolicy() {
-            return sequencingPolicy;
-        }
-
-        /**
-         * Sets the sequencing policy to use for the persistent stream.
-         * <p>
-         * Supported sequencing policies are:
-         * <ul>
-         *     <li>SequentialPerAggregatePolicy (default)</li>
-         *     <li>FullConcurrencyPolicy</li>
-         *     <li>SequentialPolicy</li>
-         *     <li>PropertySequencingPolicy</li>
-         *     <li>MetaDataSequencingPolicy</li>
-         * </ul>
-         * </p>
-         * <p>This value is only used for creating the persistent stream.</p>
-         *
-         * @param sequencingPolicy The sequencing policy name.
-         */
-        public void setSequencingPolicy(String sequencingPolicy) {
-            this.sequencingPolicy = sequencingPolicy;
-        }
-
-        /**
-         * Parameters specified for the sequencing policy.
-         *
-         * @return A list of parameters specified for the sequencing policy.
-         */
-        public List<String> getSequencingPolicyParameters() {
-            return sequencingPolicyParameters;
-        }
-
-        /**
-         * Sets the parameters specified for the sequencing policy.
-         * <p>
-         * The <em>PropertySequencingPolicy</em> and <em>MetaDataSequencingPolicy</em> require parameters.
-         * </p>
-         * <p>This value is only used for creating the persistent stream.</p>
-         *
-         * @param sequencingPolicyParameters A list of parameters specified for the sequencing policy.
-         */
-        public void setSequencingPolicyParameters(List<String> sequencingPolicyParameters) {
-            this.sequencingPolicyParameters = sequencingPolicyParameters;
-        }
-
-        /**
-         * Expression to filter out events in a persistent stream, using Axon Server Query Language as its syntax.
-         * <p>
-         * Note that it is <b>not possible</b> to change the filter once the persistent stream has been created! When
-         * doing so, Axon Server will typically throw an {@code AXONIQ-0001} exception.
-         *
-         * @return The filter expression.
-         */
-        public String getFilter() {
-            return filter;
-        }
-
-        /**
-         * Sets the expression to filter out events in a persistent stream, expecting the Axon Server Query Language as
-         * its syntax.
-         * <p>
-         * Note that it is <b>not possible</b> to change the filter once the persistent stream has been created! When
-         * doing so, Axon Server will typically throw an {@code AXONIQ-0001} exception.
-         *
-         * @param filter The filter expression.
-         */
-        public void setFilter(String filter) {
-            this.filter = filter;
-        }
-
-        /**
-         * The name for the persistent stream.
-         *
-         * @return The given name for a persistent stream.
-         */
-        public String getName() {
-            return name;
-        }
-
-        /**
-         * Assigns a name for the persistent stream.
-         * <p>This value is only used for creating the persistent stream.</p>
-         *
-         * @param name The given name for a persistent stream.
-         */
-        public void setName(String name) {
-            this.name = name;
-        }
-
-        /**
-         * The maximum number of events to process in a single transaction when reading a persistent stream.
-         *
-         * @return The batch size.
-         */
-        public int getBatchSize() {
-            return batchSize;
-        }
-
-        /**
-         * Sets the maximum number of events to process in a single transaction when reading a persistent stream. The
-         * default value is 1.
-         *
-         * @param batchSize The batch size.
-         */
-        public void setBatchSize(int batchSize) {
-            this.batchSize = batchSize;
-        }
-
-        /**
-         * The initial token position for the persistent stream. This can be a global sequence in the event store or the
-         * keywords {@code "HEAD"} or {@code "TAIL"} for a respective position at the head or tail of the stream.
-         *
-         * @return The initial token position.
-         */
-        public String getInitialPosition() {
-            return initialPosition;
-        }
-
-        /**
-         * Sets the initial token for the persistent stream. The default value is 0, starting the persistent stream from
-         * the first event in the event store.
-         * <p>You can use values {@code "HEAD"} or {@code "TAIL"} to start from the head or tail of the event
-         * stream.</p>
-         * <p>This value is only used for creating the persistent stream.</p>
-         *
-         * @param initialPosition The initial token position.
-         */
-        public void setInitialPosition(String initialPosition) {
-            this.initialPosition = initialPosition;
-        }
-    }
+    // TODO #3520 Enable as part of Persistent Streams reintroduction
+//    public static class PersistentStreamSettings {
+//
+//        private static final String DEFAULT_SEQUENCING_POLICY = PersistentStreamSequencingPolicyProvider.SEQUENTIAL_PER_AGGREGATE_POLICY;
+//
+//        /**
+//         * The number of segments for the persistent stream if it needs to be created. Defaults to 1.
+//         */
+//        private int initialSegmentCount = 1;
+//
+//        /**
+//         * The number of threads used to process tasks (e.g. event handling) for the persistent stream. Defaults to 1.
+//         */
+//        private int threadCount = 1;
+//
+//        /**
+//         * The sequencing policy to use for the persistent stream.
+//         * <p>
+//         * Supported sequencing policies are:
+//         * <ul>
+//         *     <li>{@link PersistentStreamSequencingPolicyProvider#SEQUENTIAL_PER_AGGREGATE_POLICY} (default)</li>
+//         *     <li>{@link PersistentStreamSequencingPolicyProvider#FULL_CONCURRENCY_POLICY}</li>
+//         *     <li>{@link PersistentStreamSequencingPolicyProvider#SEQUENTIAL_POLICY}</li>
+//         *     <li>{@link PersistentStreamSequencingPolicyProvider#PROPERTY_SEQUENCING_POLICY}</li>
+//         *     <li>{@link PersistentStreamSequencingPolicyProvider#METADATA_SEQUENCING_POLICY}</li>
+//         * </ul>
+//         */
+//        private String sequencingPolicy = DEFAULT_SEQUENCING_POLICY;
+//
+//        /**
+//         * Parameters specified for the sequencing policy.
+//         */
+//        private List<String> sequencingPolicyParameters = new LinkedList<>();
+//
+//        /**
+//         * Expression to filter out events in a persistent stream, expecting the Axon Server Query Language as its
+//         * syntax.
+//         * <p>
+//         * Note that it is <b>not possible</b> to change the filter once the persistent stream has been created! When
+//         * doing so, Axon Server will typically throw an {@code AXONIQ-0001} exception.
+//         */
+//        private String filter;
+//
+//        /**
+//         * The name for the persistent stream.
+//         */
+//        private String name;
+//
+//        /**
+//         * The maximum number of events to process in a single transaction when reading a persistent stream. Defaults to
+//         * 1.
+//         */
+//        private int batchSize = 1;
+//
+//        /**
+//         * The initial token for the persistent stream. This can be a global sequence in the event store or keyword
+//         * {@code "HEAD"} or {@code "TAIL"}. Defaults to {@code "TAIL"}.
+//         */
+//        private String initialPosition = "TAIL";
+//
+//        /**
+//         * The number of segments for the persistent stream if it needs to be created.
+//         *
+//         * @return the number of segments for the persistent stream if it needs to be created
+//         */
+//        public int getInitialSegmentCount() {
+//            return initialSegmentCount;
+//        }
+//
+//        /**
+//         * Sets the number of segments for the persistent stream if it needs to be created.
+//         *
+//         * @param initialSegmentCount the number of segments
+//         */
+//        public void setInitialSegmentCount(int initialSegmentCount) {
+//            this.initialSegmentCount = initialSegmentCount;
+//        }
+//
+//        /**
+//         * The number of threads used to process tasks (e.g. event handling) for the persistent stream. Defaults to 1.
+//         *
+//         * @return The number of threads used to process tasks (e.g. event handling) for the persistent stream.
+//         */
+//        public int getThreadCount() {
+//            return threadCount;
+//        }
+//
+//        /**
+//         * Sets the number of threads used to process tasks (e.g. event handling) for the persistent stream.
+//         *
+//         * @param threadCount The number of threads used to process tasks (e.g. event handling) for the persistent
+//         *                    stream.
+//         */
+//        public void setThreadCount(int threadCount) {
+//            this.threadCount = threadCount;
+//        }
+//
+//        /**
+//         * The sequencing policy to use for the persistent stream.
+//         *
+//         * @return the sequencing policy name
+//         */
+//        public String getSequencingPolicy() {
+//            return sequencingPolicy;
+//        }
+//
+//        /**
+//         * Sets the sequencing policy to use for the persistent stream.
+//         * <p>
+//         * Supported sequencing policies are:
+//         * <ul>
+//         *     <li>SequentialPerAggregatePolicy (default)</li>
+//         *     <li>FullConcurrencyPolicy</li>
+//         *     <li>SequentialPolicy</li>
+//         *     <li>PropertySequencingPolicy</li>
+//         *     <li>MetadataSequencingPolicy</li>
+//         * </ul>
+//         * </p>
+//         * <p>This value is only used for creating the persistent stream.</p>
+//         *
+//         * @param sequencingPolicy The sequencing policy name.
+//         */
+//        public void setSequencingPolicy(String sequencingPolicy) {
+//            this.sequencingPolicy = sequencingPolicy;
+//        }
+//
+//        /**
+//         * Parameters specified for the sequencing policy.
+//         *
+//         * @return A list of parameters specified for the sequencing policy.
+//         */
+//        public List<String> getSequencingPolicyParameters() {
+//            return sequencingPolicyParameters;
+//        }
+//
+//        /**
+//         * Sets the parameters specified for the sequencing policy.
+//         * <p>
+//         * The <em>PropertySequencingPolicy</em> and <em>MetadataSequencingPolicy</em> require parameters.
+//         * </p>
+//         * <p>This value is only used for creating the persistent stream.</p>
+//         *
+//         * @param sequencingPolicyParameters A list of parameters specified for the sequencing policy.
+//         */
+//        public void setSequencingPolicyParameters(List<String> sequencingPolicyParameters) {
+//            this.sequencingPolicyParameters = sequencingPolicyParameters;
+//        }
+//
+//        /**
+//         * Expression to filter out events in a persistent stream, using Axon Server Query Language as its syntax.
+//         * <p>
+//         * Note that it is <b>not possible</b> to change the filter once the persistent stream has been created! When
+//         * doing so, Axon Server will typically throw an {@code AXONIQ-0001} exception.
+//         *
+//         * @return The filter expression.
+//         */
+//        public String getFilter() {
+//            return filter;
+//        }
+//
+//        /**
+//         * Sets the expression to filter out events in a persistent stream, expecting the Axon Server Query Language as
+//         * its syntax.
+//         * <p>
+//         * Note that it is <b>not possible</b> to change the filter once the persistent stream has been created! When
+//         * doing so, Axon Server will typically throw an {@code AXONIQ-0001} exception.
+//         *
+//         * @param filter The filter expression.
+//         */
+//        public void setFilter(String filter) {
+//            this.filter = filter;
+//        }
+//
+//        /**
+//         * The name for the persistent stream.
+//         *
+//         * @return The given name for a persistent stream.
+//         */
+//        public String getName() {
+//            return name;
+//        }
+//
+//        /**
+//         * Assigns a name for the persistent stream.
+//         * <p>This value is only used for creating the persistent stream.</p>
+//         *
+//         * @param name The given name for a persistent stream.
+//         */
+//        public void setName(String name) {
+//            this.name = name;
+//        }
+//
+//        /**
+//         * The maximum number of events to process in a single transaction when reading a persistent stream.
+//         *
+//         * @return The batch size.
+//         */
+//        public int getBatchSize() {
+//            return batchSize;
+//        }
+//
+//        /**
+//         * Sets the maximum number of events to process in a single transaction when reading a persistent stream. The
+//         * default value is 1.
+//         *
+//         * @param batchSize The batch size.
+//         */
+//        public void setBatchSize(int batchSize) {
+//            this.batchSize = batchSize;
+//        }
+//
+//        /**
+//         * The initial token position for the persistent stream. This can be a global sequence in the event store or the
+//         * keywords {@code "HEAD"} or {@code "TAIL"} for a respective position at the head or tail of the stream.
+//         *
+//         * @return The initial token position.
+//         */
+//        public String getInitialPosition() {
+//            return initialPosition;
+//        }
+//
+//        /**
+//         * Sets the initial token for the persistent stream. The default value is 0, starting the persistent stream from
+//         * the first event in the event store.
+//         * <p>You can use values {@code "HEAD"} or {@code "TAIL"} to start from the head or tail of the event
+//         * stream.</p>
+//         * <p>This value is only used for creating the persistent stream.</p>
+//         *
+//         * @param initialPosition The initial token position.
+//         */
+//        public void setInitialPosition(String initialPosition) {
+//            this.initialPosition = initialPosition;
+//        }
+//    }
 }

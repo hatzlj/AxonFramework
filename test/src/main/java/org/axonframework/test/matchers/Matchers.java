@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2023. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -39,7 +39,7 @@ public abstract class Matchers {
      * @param matcher The mather to match against the Message payloads
      * @return a Matcher that matches against the Message payloads
      */
-    public static Matcher<List<Message<?>>> payloadsMatching(final Matcher<? extends List<?>> matcher) {
+    public static Matcher<List<Message>> payloadsMatching(final Matcher<? extends List<?>> matcher) {
         return new PayloadsMatcher(matcher);
     }
 
@@ -49,7 +49,7 @@ public abstract class Matchers {
      * @param payloadMatcher The matcher to match against the Message's payload
      * @return a Matcher that evaluates a Message's payload.
      */
-    public static Matcher<Message<?>> messageWithPayload(Matcher<?> payloadMatcher) {
+    public static Matcher<Message> messageWithPayload(Matcher<?> payloadMatcher) {
         return new PayloadMatcher<>(payloadMatcher);
     }
 
@@ -142,7 +142,7 @@ public abstract class Matchers {
      *
      * @return a matcher that matches an empty list of events
      */
-    public static Matcher<List<EventMessage<?>>> noEvents() {
+    public static Matcher<List<EventMessage>> noEvents() {
         return new EmptyCollectionMatcher<>("events");
     }
 
@@ -151,7 +151,7 @@ public abstract class Matchers {
      *
      * @return a matcher that matches an empty list of Commands
      */
-    public static Matcher<List<CommandMessage<?>>> noCommands() {
+    public static Matcher<List<CommandMessage>> noCommands() {
         return new EmptyCollectionMatcher<>("commands");
     }
 
@@ -164,41 +164,6 @@ public abstract class Matchers {
      */
     public static <T> Matcher<T> exactClassOf(Class<T> expected) {
         return new ExactClassMatcher<>(expected);
-    }
-
-    /**
-     * Matches against each event of the same runtime type that has all field values equal to the fields in the expected
-     * event. All fields are compared, except for the aggregate identifier and sequence number, as they are generally
-     * not set on the expected event.
-     *
-     * @param expected The event with the expected field values
-     * @param <T>      The type of event to match against
-     * @return a matcher that matches based on the equality of field values
-     * @deprecated Please use the {@link #deepEquals(Object)} instead. Using this method will lead to unwanted
-     * exceptions when ran on JDK 17 and up, due to adjustments in reflective access.
-     */
-    @SuppressWarnings("DeprecatedIsStillUsed") // Used in tests
-    @Deprecated
-    public static <T> EqualFieldsMatcher<T> equalTo(T expected) {
-        return new EqualFieldsMatcher<>(expected);
-    }
-
-    /**
-     * Matches against each event of the same runtime type that has all field values equal to the fields in the expected
-     * event. All fields are compared, except for the aggregate identifier and sequence number, as they are generally
-     * not set on the expected event.
-     *
-     * @param expected The event with the expected field values
-     * @param filter   The filter describing the Fields to include in the comparison
-     * @param <T>      The type of event to match against
-     * @return a matcher that matches based on the equality of field values
-     * @deprecated Please use the {@link #deepEquals(Object, FieldFilter)} instead. Using this method will lead to
-     * unwanted exceptions when ran on JDK 17 and up, due to adjustments in reflective access.
-     */
-    @SuppressWarnings("DeprecatedIsStillUsed") // Used in tests
-    @Deprecated
-    public static <T> EqualFieldsMatcher<T> equalTo(T expected, FieldFilter filter) {
-        return new EqualFieldsMatcher<>(expected, filter);
     }
 
     /**

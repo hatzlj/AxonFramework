@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2023. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,15 +35,15 @@ import static org.mockito.Mockito.*;
  */
 public class SequenceOfEventsMatcherTest {
 
-    private Matcher<EventMessage<?>> mockMatcher1;
-    private Matcher<EventMessage<?>> mockMatcher2;
-    private Matcher<EventMessage<?>> mockMatcher3;
+    private Matcher<EventMessage> mockMatcher1;
+    private Matcher<EventMessage> mockMatcher2;
+    private Matcher<EventMessage> mockMatcher3;
     private StubEvent stubEvent1;
     private StubEvent stubEvent2;
     private StubEvent stubEvent3;
     private StubEvent stubEvent4;
     private StubEvent stubEvent5;
-    private Matcher<List<EventMessage<?>>> testSubject;
+    private Matcher<List<EventMessage>> testSubject;
 
     @SuppressWarnings({"unchecked"})
     @BeforeEach

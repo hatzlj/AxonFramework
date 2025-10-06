@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,27 +16,29 @@
 
 package org.axonframework.messaging;
 
-import org.axonframework.serialization.SerializedObject;
-import org.axonframework.serialization.Serializer;
+import jakarta.annotation.Nonnull;
+import org.axonframework.common.TypeReference;
+import org.axonframework.serialization.Converter;
 
+import java.lang.reflect.Type;
 import java.util.Map;
 import java.util.Optional;
-import javax.annotation.Nonnull;
 
 /**
- * Message that represents a result of handling some form of request message.
+ * A {@link Message} that represents a result of handling some form of request message.
  *
- * @param <R> The type of payload contained in this Message
  * @author Milan Savic
- * @since 4.0
+ * @since 4.0.0
  */
-public interface ResultMessage<R> extends Message<R> {
+public interface ResultMessage extends Message {
 
     /**
      * Indicates whether the ResultMessage represents unsuccessful execution.
      *
      * @return {@code true} if execution was unsuccessful, {@code false} otherwise
+     * @deprecated Exceptional results will be reported as an exception or using a failed MessageStream
      */
+    @Deprecated
     boolean isExceptional();
 
     /**
@@ -44,7 +46,9 @@ public interface ResultMessage<R> extends Message<R> {
      * execution.
      *
      * @return an {@link Optional} containing exception result or an empty Optional in case of a successful execution
+     * @deprecated Exceptional results will be reported as an exception or using a failed MessageStream
      */
+    @Deprecated
     Optional<Throwable> optionalExceptionResult();
 
     /**
@@ -52,50 +56,48 @@ public interface ResultMessage<R> extends Message<R> {
      *
      * @return a {@link Throwable} defining the exception result
      * @throws IllegalStateException if this ResultMessage is not exceptional
+     * @deprecated Exceptional results will be reported as an exception or using a failed MessageStream
      */
+    @Deprecated
     default Throwable exceptionResult() throws IllegalStateException {
         return optionalExceptionResult().orElseThrow(IllegalStateException::new);
     }
 
     /**
-     * If the this message contains an exception result, returns the details provided in the exception, if available.
-     * If this message does not carry an exception result, or the exception result doesn't provide any
-     * application-specific details, an empty optional is returned.
+     * If the this message contains an exception result, returns the details provided in the exception, if available. If
+     * this message does not carry an exception result, or the exception result doesn't provide any application-specific
+     * details, an empty optional is returned.
      *
      * @param <D> The type of application-specific details expected
      * @return an optional containing application-specific error details, if present
+     * @deprecated Exceptional results will be reported as an exception or using a failed MessageStream
      */
+    @Deprecated
     default <D> Optional<D> exceptionDetails() {
         return optionalExceptionResult().flatMap(HandlerExecutionException::resolveDetails);
     }
 
     @Override
-    default <S> SerializedObject<S> serializePayload(Serializer serializer, Class<S> expectedRepresentation) {
-        if (isExceptional()) {
-            return serializer.serialize(exceptionDetails().orElse(null), expectedRepresentation);
-        }
-        return serializer.serialize(getPayload(), expectedRepresentation);
-    }
+    @Nonnull
+    ResultMessage withMetadata(@Nonnull Map<String, String> metadata);
 
-    /**
-     * Serializes the exception result. Will create a {@link RemoteExceptionDescription} from the {@link Optional}
-     * exception in this ResultMessage instead of serializing the original exception.
-     *
-     * @param serializer             the {@link Serializer} used to serialize the exception
-     * @param expectedRepresentation a {@link Class} representing the expected format
-     * @param <T>                    the generic type representing the expected format
-     * @return the serialized exception as a {@link SerializedObject}
-     */
-    default <T> SerializedObject<T> serializeExceptionResult(Serializer serializer, Class<T> expectedRepresentation) {
-        return serializer.serialize(
-                optionalExceptionResult().map(RemoteExceptionDescription::describing).orElse(null),
-                expectedRepresentation
-        );
+    @Override
+    @Nonnull
+    ResultMessage andMetadata(@Nonnull Map<String, String> metadata);
+
+    @Override
+    @Nonnull
+    default ResultMessage withConvertedPayload(@Nonnull Class<?> type, @Nonnull Converter converter) {
+        return withConvertedPayload((Type) type, converter);
     }
 
     @Override
-    ResultMessage<R> withMetaData(@Nonnull Map<String, ?> metaData);
+    @Nonnull
+    default ResultMessage withConvertedPayload(@Nonnull TypeReference<?> type, @Nonnull Converter converter) {
+        return withConvertedPayload(type.getType(), converter);
+    }
 
     @Override
-    ResultMessage<R> andMetaData(@Nonnull Map<String, ?> metaData);
+    @Nonnull
+    ResultMessage withConvertedPayload(@Nonnull Type type, @Nonnull Converter converter);
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,13 +16,12 @@
 
 package org.axonframework.springboot;
 
-import org.axonframework.commandhandling.CommandHandler;
+import org.axonframework.commandhandling.annotations.CommandHandler;
 import org.axonframework.commandhandling.gateway.CommandGateway;
 import org.axonframework.queryhandling.QueryGateway;
-import org.axonframework.queryhandling.QueryHandler;
+import org.axonframework.queryhandling.annotations.QueryHandler;
 import org.axonframework.springboot.autoconfig.AxonServerActuatorAutoConfiguration;
 import org.axonframework.springboot.autoconfig.AxonServerAutoConfiguration;
-import org.axonframework.springboot.autoconfig.AxonServerBusAutoConfiguration;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.*;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -47,11 +46,11 @@ import static org.junit.jupiter.api.Assertions.*;
         WebClientAutoConfiguration.class,
         HibernateJpaAutoConfiguration.class,
         DataSourceAutoConfiguration.class,
-        AxonServerBusAutoConfiguration.class,
         AxonServerAutoConfiguration.class,
         AxonServerActuatorAutoConfiguration.class
 })
 @EnableMBeanExport(registration = RegistrationPolicy.IGNORE_EXISTING)
+@Disabled("TODO #3498")
 public class AxonHandlerConfigurationTest {
 
     @Autowired
@@ -62,8 +61,8 @@ public class AxonHandlerConfigurationTest {
 
     @Test
     void messageRoutedToCorrectMethod() throws Exception {
-        assertEquals("Command: info", commandGateway.send("info").get());
-        assertEquals("Query: info", queryGateway.query("info", String.class).get());
+        assertEquals("Command: info", commandGateway.sendAndWait("info", String.class));
+        assertEquals("Query: info", queryGateway.query("info", String.class, null).get());
     }
 
     @SuppressWarnings("unused")

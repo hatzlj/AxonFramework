@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2023. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -34,7 +34,7 @@ public interface EventMessageConverter {
 	 * @param <T>   The event payload type
 	 * @return The outbound Spring message
 	 */
-	<T> Message<T> convertToOutboundMessage(EventMessage<T> event);
+	<T> Message convertToOutboundMessage(EventMessage event);
 
 	/**
 	 * Converts a Spring inbound {@code message} into an Axon event Message
@@ -43,5 +43,5 @@ public interface EventMessageConverter {
 	 * @param <T>     The message payload type
 	 * @return The inbound Axon event message
 	 */
-	<T> EventMessage<T> convertFromInboundMessage(Message<T> message);
+	<T> EventMessage convertFromInboundMessage(Message message);
 }

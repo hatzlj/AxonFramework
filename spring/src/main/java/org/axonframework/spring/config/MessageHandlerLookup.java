@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,11 +16,13 @@
 
 package org.axonframework.spring.config;
 
+import jakarta.annotation.Nonnull;
 import org.axonframework.common.ObjectUtils;
 import org.axonframework.common.ReflectionUtils;
-import org.axonframework.common.annotation.AnnotationUtils;
+import org.axonframework.common.annotations.AnnotationUtils;
+import org.axonframework.common.annotations.Internal;
 import org.axonframework.messaging.Message;
-import org.axonframework.messaging.annotation.MessageHandler;
+import org.axonframework.messaging.annotations.MessageHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.BeansException;
@@ -40,16 +42,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
-import javax.annotation.Nonnull;
 
 /**
  * A {@link BeanDefinitionRegistryPostProcessor} implementation that detects beans with Axon Message handlers and
  * registers an {@link MessageHandlerConfigurer} to have these handlers registered in the Axon
- * {@link org.axonframework.config.Configuration}.
+ * {@link org.axonframework.configuration.Configuration}.
  *
  * @author Allard Buijze
  * @since 4.6.0
  */
+@Internal
 public class MessageHandlerLookup implements BeanDefinitionRegistryPostProcessor {
 
     private static final Logger logger = LoggerFactory.getLogger(MessageHandlerLookup.class);
@@ -63,7 +65,7 @@ public class MessageHandlerLookup implements BeanDefinitionRegistryPostProcessor
      * @param registry    The registry to find these handlers in.
      * @return A list of bean names with message handlers.
      */
-    public static List<String> messageHandlerBeans(Class<? extends Message<?>> messageType,
+    public static List<String> messageHandlerBeans(Class<? extends Message> messageType,
                                                    ConfigurableListableBeanFactory registry) {
         return messageHandlerBeans(messageType, registry, false);
     }
@@ -77,7 +79,7 @@ public class MessageHandlerLookup implements BeanDefinitionRegistryPostProcessor
      * @param registry    The registry to find these handlers in.
      * @return A list of bean names with message handlers.
      */
-    public static List<String> messageHandlerBeans(Class<? extends Message<?>> messageType,
+    public static List<String> messageHandlerBeans(Class<? extends Message> messageType,
                                                    ConfigurableListableBeanFactory registry,
                                                    boolean includePrototypeBeans) {
         List<String> found = new ArrayList<>();
@@ -93,7 +95,7 @@ public class MessageHandlerLookup implements BeanDefinitionRegistryPostProcessor
         return found;
     }
 
-    private static boolean hasMessageHandler(Class<? extends Message<?>> messageType, Class<?> beanType) {
+    private static boolean hasMessageHandler(Class<? extends Message> messageType, Class<?> beanType) {
         for (Method m : ReflectionUtils.methodsOf(beanType)) {
             Optional<Map<String, Object>> attr = AnnotationUtils.findAnnotationAttributes(m, MessageHandler.class);
             if (attr.isPresent() && messageType.isAssignableFrom((Class<?>) attr.get().get("messageType"))) {

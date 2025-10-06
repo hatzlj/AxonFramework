@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,7 +22,8 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Tag;
 import io.micrometer.core.instrument.Tags;
 import org.axonframework.eventhandling.EventMessage;
-import org.axonframework.eventhandling.StreamingEventProcessor;
+import org.axonframework.eventhandling.processors.streaming.StreamingEventProcessor;
+import org.axonframework.eventhandling.processors.EventProcessor;
 import org.axonframework.messaging.Message;
 import org.axonframework.monitoring.MessageMonitor;
 import org.axonframework.monitoring.NoOpMessageMonitorCallback;
@@ -31,7 +32,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
-import javax.annotation.Nonnull;
+import jakarta.annotation.Nonnull;
 
 import static org.axonframework.common.BuilderUtils.assertNonEmpty;
 import static org.axonframework.common.BuilderUtils.assertNonNull;
@@ -39,9 +40,9 @@ import static org.axonframework.common.BuilderUtils.assertNonNull;
 /**
  * A {@link MessageMonitor} implementation dedicated to {@link EventMessage EventMessages}.
  * <p>
- * This monitor defines the latency between the {@link EventMessage#getTimestamp()} and the {@link Clock#wallTime()}.
+ * This monitor defines the latency between the {@link EventMessage#timestamp()} and the {@link Clock#wallTime()}.
  * Doing so, it depicts the latency from when an event was published compared to when an
- * {@link org.axonframework.eventhandling.EventProcessor} processes the event to clarify how far behind an
+ * {@link EventProcessor} processes the event to clarify how far behind an
  * {@code EventProcessor} is.
  * <p>
  * Do note that a replay (as triggered through {@link StreamingEventProcessor#resetTokens()}, for example) will cause
@@ -52,11 +53,11 @@ import static org.axonframework.common.BuilderUtils.assertNonNull;
  * @author Allard Buijze
  * @since 4.1
  */
-public class EventProcessorLatencyMonitor implements MessageMonitor<EventMessage<?>> {
+public class EventProcessorLatencyMonitor implements MessageMonitor<EventMessage> {
 
     private final String meterNamePrefix;
     private final MeterRegistry meterRegistry;
-    private final Function<Message<?>, Iterable<Tag>> tagsBuilder;
+    private final Function<Message, Iterable<Tag>> tagsBuilder;
     private final Clock clock;
 
     private final ConcurrentMap<Tags, AtomicLong> gauges = new ConcurrentHashMap<>();
@@ -90,49 +91,14 @@ public class EventProcessorLatencyMonitor implements MessageMonitor<EventMessage
         this.clock = builder.clock;
     }
 
-    /**
-     * Build an {@link EventProcessorLatencyMonitor}
-     *
-     * @param meterNamePrefix the prefix for the meter name that will be created in the given {@code meterRegistry}
-     * @param meterRegistry   the meter registry used to create and register the meters
-     * @return the created {@link EventProcessorLatencyMonitor}
-     * @deprecated in favor of using the {@link #builder()}
-     */
-    @Deprecated
-    public static EventProcessorLatencyMonitor buildMonitor(String meterNamePrefix, MeterRegistry meterRegistry) {
-        return builder().meterNamePrefix(meterNamePrefix)
-                        .meterRegistry(meterRegistry)
-                        .build();
-    }
-
-    /**
-     * Build an {@link EventProcessorLatencyMonitor}.
-     *
-     * @param meterNamePrefix the prefix for the meter name that will be created in the given {@code meterRegistry}
-     * @param meterRegistry   the meter registry used to create and register the meters
-     * @param tagsBuilder     the function used to construct the list of micrometer {@link Tag}, based on the ingested
-     *                        message
-     * @return the created {@link EventProcessorLatencyMonitor}
-     * @deprecated in favor of using the {@link #builder()}
-     */
-    @Deprecated
-    public static EventProcessorLatencyMonitor buildMonitor(String meterNamePrefix,
-                                                            MeterRegistry meterRegistry,
-                                                            Function<Message<?>, Iterable<Tag>> tagsBuilder) {
-        return builder().meterNamePrefix(meterNamePrefix)
-                        .meterRegistry(meterRegistry)
-                        .tagsBuilder(tagsBuilder)
-                        .build();
-    }
-
     @SuppressWarnings("PackageAccessibility")
     @Override
-    public MonitorCallback onMessageIngested(@Nonnull EventMessage<?> message) {
+    public MonitorCallback onMessageIngested(@Nonnull EventMessage message) {
         //noinspection ConstantConditions
         if (message != null) {
             Tags tags = Tags.of(tagsBuilder.apply(message));
             AtomicLong actualCounter = gauges.computeIfAbsent(tags, k -> new AtomicLong());
-            actualCounter.set(clock.wallTime() - message.getTimestamp().toEpochMilli());
+            actualCounter.set(clock.wallTime() - message.timestamp().toEpochMilli());
 
             Gauge.builder(meterNamePrefix + ".latency", actualCounter::get)
                  .tags(tags)
@@ -152,7 +118,7 @@ public class EventProcessorLatencyMonitor implements MessageMonitor<EventMessage
 
         private String meterNamePrefix;
         private MeterRegistry meterRegistry;
-        private Function<Message<?>, Iterable<Tag>> tagsBuilder = message -> Tags.empty();
+        private Function<Message, Iterable<Tag>> tagsBuilder = message -> Tags.empty();
         private Clock clock = Clock.SYSTEM;
 
         /**
@@ -202,7 +168,7 @@ public class EventProcessorLatencyMonitor implements MessageMonitor<EventMessage
          *                    monitored
          * @return the current Builder instance, for fluent interfacing
          */
-        public Builder tagsBuilder(Function<Message<?>, Iterable<Tag>> tagsBuilder) {
+        public Builder tagsBuilder(Function<Message, Iterable<Tag>> tagsBuilder) {
             assertNonNull(tagsBuilder, "TagsBuilder may not be null");
             this.tagsBuilder = tagsBuilder;
             return this;

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,125 +16,145 @@
 
 package org.axonframework.commandhandling;
 
+import jakarta.annotation.Nonnull;
+import jakarta.annotation.Nullable;
+import org.axonframework.common.ObjectUtils;
+import org.axonframework.messaging.GenericMessage;
 import org.axonframework.messaging.GenericResultMessage;
 import org.axonframework.messaging.Message;
+import org.axonframework.messaging.MessageType;
+import org.axonframework.queryhandling.QueryResponseMessage;
+import org.axonframework.serialization.Converter;
 
+import java.lang.reflect.Type;
 import java.util.Map;
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
 
 /**
- * Generic implementation of {@link CommandResultMessage}.
+ * Generic implementation of the {@link CommandResultMessage} interface.
  *
- * @param <R> The type of the payload contained in this Message
  * @author Milan Savic
- * @since 4.0
+ * @author Steven van Beelen
+ * @since 4.0.0
  */
-public class GenericCommandResultMessage<R> extends GenericResultMessage<R> implements CommandResultMessage<R> {
-
-    private static final long serialVersionUID = 9013948836930094183L;
+public class GenericCommandResultMessage extends GenericResultMessage implements CommandResultMessage {
 
     /**
-     * Returns the given {@code commandResult} as a {@link CommandResultMessage} instance. If {@code commandResult}
-     * already implements {@link CommandResultMessage}, it is returned as-is. If {@code commandResult} implements {@link
-     * Message}, payload and meta data will be used to construct new {@link GenericCommandResultMessage}. Otherwise, the
-     * given {@code commandResult} is wrapped into a {@link GenericCommandResultMessage} as its payload.
+     * Constructs a {@link GenericResultMessage} for the given {@code type} and {@code commandResult}.
+     * <p>
+     * Uses the correlation data of the current Unit of Work, if present.
      *
-     * @param commandResult the command result to be wrapped as {@link CommandResultMessage}
-     * @param <T>           The type of the payload contained in returned Message
-     * @return a Message containing given {@code commandResult} as payload, or {@code commandResult} if already
-     * implements {@link CommandResultMessage}
+     * @param type          The {@link MessageType type} for this {@link CommandResultMessage}.
+     * @param commandResult The result for this {@link CommandResultMessage}.
      */
-    @SuppressWarnings("unchecked")
-    public static <T> CommandResultMessage<T> asCommandResultMessage(@Nonnull Object commandResult) {
-        if (commandResult instanceof CommandResultMessage) {
-            return (CommandResultMessage<T>) commandResult;
-        } else if (commandResult instanceof Message) {
-            Message<T> commandResultMessage = (Message<T>) commandResult;
-            return new GenericCommandResultMessage<>(commandResultMessage);
-        }
-        return new GenericCommandResultMessage<>((T) commandResult);
+    public GenericCommandResultMessage(@Nonnull MessageType type,
+                                       @Nullable Object commandResult) {
+        super(type, commandResult);
     }
 
     /**
-     * Creates a Command Result Message with the given {@code exception} result.
+     * Constructs a {@code GenericCommandResultMessage} for the given {@code type} and {@code exception}.
+     * <p>
+     * Uses the correlation data of the current Unit of Work, if present.
      *
-     * @param exception the Exception describing the cause of an error
-     * @param <T>       the type of payload
-     * @return a message containing exception result
+     * @param type      The {@link MessageType type} for this {@link CommandResultMessage}.
+     * @param exception The {@link Throwable} describing the error representing the response of this
+     *                  {@link CommandResultMessage}.
      */
-    public static <T> CommandResultMessage<T> asCommandResultMessage(@Nonnull Throwable exception) {
-        return new GenericCommandResultMessage<>(exception);
+    public GenericCommandResultMessage(@Nonnull MessageType type,
+                                       @Nonnull Throwable exception) {
+        super(type, exception);
     }
 
     /**
-     * Creates a Command Result Message with the given {@code commandResult} as the payload.
+     * Constructs a {@code GenericCommandResultMessage} for the given {@code type}, {@code commandResult}, and
+     * {@code metadata}.
      *
-     * @param commandResult the payload for the Message
+     * @param type          The {@link MessageType type} for this {@link CommandResultMessage}.
+     * @param commandResult The result for this {@link CommandResultMessage}.
+     * @param metadata      The metadata for this {@link CommandResultMessage}.
      */
-    public GenericCommandResultMessage(@Nullable R commandResult) {
-        super(commandResult);
+    public GenericCommandResultMessage(@Nonnull MessageType type,
+                                       @Nullable Object commandResult,
+                                       @Nonnull Map<String, String> metadata) {
+        super(type, commandResult, metadata);
     }
 
     /**
-     * Creates a Command Result Message with the given {@code exception}.
+     * Constructs a {@code GenericCommandResultMessage} for the given {@code type}, {@code exception}, and
+     * {@code metadata}.
      *
-     * @param exception the Exception describing the cause of an error
+     * @param type      The {@link MessageType type} for this {@link CommandResultMessage}.
+     * @param exception The {@link Throwable} describing the error representing the response of this
+     *                  {@link CommandResultMessage}.
+     * @param metadata  The metadata for this {@link CommandResultMessage}.
      */
-    public GenericCommandResultMessage(@Nonnull Throwable exception) {
-        super(exception);
+    public GenericCommandResultMessage(@Nonnull MessageType type,
+                                       @Nonnull Throwable exception,
+                                       @Nonnull Map<String, String> metadata) {
+        super(type, exception, metadata);
     }
 
     /**
-     * Creates a Command Result Message with the given {@code commandResult} as the payload and {@code metaData} as the
-     * meta data.
+     * Constructs a {@code GenericCommandResultMessage} for the given {@code delegate}, intended to reconstruct another
+     * {@link CommandResultMessage}.
+     * <p>
+     * Unlike the other constructors, this constructor will not attempt to retrieve any correlation data from the Unit
+     * of Work.
      *
-     * @param commandResult the payload for the Message
-     * @param metaData      the meta data for the Message
+     * @param delegate The {@link Message} containing {@link Message#payload() payload}, {@link Message#type() type},
+     *                 {@link Message#identifier() identifier} and {@link Message#metadata() metadata} for the
+     *                 {@link QueryResponseMessage} to reconstruct.
      */
-    public GenericCommandResultMessage(@Nonnull R commandResult, @Nonnull Map<String, ?> metaData) {
-        super(commandResult, metaData);
-    }
-
-    /**
-     * Creates a Command Result Message with the given {@code exception} and {@code metaData}.
-     *
-     * @param exception the Exception describing the cause of an error
-     * @param metaData  the meta data for the Message
-     */
-    public GenericCommandResultMessage(@Nonnull Throwable exception, @Nonnull Map<String, ?> metaData) {
-        super(exception, metaData);
-    }
-
-    /**
-     * Creates a new Command Result Message with given {@code delegate} message.
-     *
-     * @param delegate the message delegate
-     */
-    public GenericCommandResultMessage(@Nonnull Message<R> delegate) {
+    public GenericCommandResultMessage(@Nonnull Message delegate) {
         super(delegate);
     }
 
     /**
-     * Creates a Command Result Message with given {@code delegate} message and {@code exception}.
+     * Constructs a {@code GenericCommandResultMessage} for the given {@code delegate} and {@code exception} as a cause
+     * for the failure, intended to reconstruct another {@link CommandResultMessage}.
+     * <p>
+     * Unlike the other constructors, this constructor will not attempt to retrieve any correlation data from the Unit
+     * of Work.
      *
-     * @param delegate  the Message delegate
-     * @param exception the Exception describing the cause of an error
+     * @param delegate  The {@link Message} containing {@link Message#payload() payload}, {@link Message#type() type},
+     *                  {@link Message#identifier() identifier} and {@link Message#metadata() metadata} for the
+     *                  {@link QueryResponseMessage} to reconstruct.
+     * @param exception The {@link Throwable} describing the error representing the response of this
+     *                  {@link CommandResultMessage}.
      */
-    public GenericCommandResultMessage(@Nonnull Message<R> delegate, @Nullable Throwable exception) {
+    public GenericCommandResultMessage(@Nonnull Message delegate,
+                                       @Nullable Throwable exception) {
         super(delegate, exception);
     }
 
     @Override
-    public GenericCommandResultMessage<R> withMetaData(@Nonnull Map<String, ?> metaData) {
+    @Nonnull
+    public CommandResultMessage withMetadata(@Nonnull Map<String, String> metadata) {
         Throwable exception = optionalExceptionResult().orElse(null);
-        return new GenericCommandResultMessage<>(getDelegate().withMetaData(metaData), exception);
+        return new GenericCommandResultMessage(delegate().withMetadata(metadata), exception);
     }
 
     @Override
-    public GenericCommandResultMessage<R> andMetaData(@Nonnull Map<String, ?> metaData) {
+    @Nonnull
+    public CommandResultMessage andMetadata(@Nonnull Map<String, String> metadata) {
         Throwable exception = optionalExceptionResult().orElse(null);
-        return new GenericCommandResultMessage<>(getDelegate().andMetaData(metaData), exception);
+        return new GenericCommandResultMessage(delegate().andMetadata(metadata), exception);
+    }
+
+    @Override
+    @Nonnull
+    public CommandResultMessage withConvertedPayload(@Nonnull Type type,
+                                                     @Nonnull Converter converter) {
+        Object convertedPayload = payloadAs(type, converter);
+        if (ObjectUtils.nullSafeTypeOf(convertedPayload).isAssignableFrom(payloadType())) {
+            return this;
+        }
+        Message delegate = delegate();
+        Message converted = new GenericMessage(delegate.identifier(),
+                                               delegate.type(),
+                                               convertedPayload,
+                                               delegate.metadata());
+        return new GenericCommandResultMessage(converted, optionalExceptionResult().orElse(null));
     }
 
     @Override

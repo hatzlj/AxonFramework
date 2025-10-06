@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,15 +16,15 @@
 
 package org.axonframework.util;
 
-import org.axonframework.commandhandling.CommandHandler;
-import org.axonframework.eventhandling.EventHandler;
-import org.axonframework.queryhandling.QueryHandler;
+import org.axonframework.commandhandling.annotations.CommandHandler;
+import org.axonframework.eventhandling.annotations.EventHandler;
+import org.axonframework.queryhandling.annotations.QueryHandler;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 
 import static org.axonframework.common.ReflectionUtils.methodsOf;
-import static org.axonframework.common.annotation.AnnotationUtils.isAnnotationPresent;
+import static org.axonframework.common.annotations.AnnotationUtils.isAnnotationPresent;
 
 /**
  * Uses reflection to know if a handler handles a certain type of messages.

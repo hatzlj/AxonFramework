@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import java.util.function.Supplier;
-import javax.annotation.Nonnull;
+import jakarta.annotation.Nonnull;
 
 /**
  * A {@link MessageMonitor} implementation which creates a new MessageMonitor for every {@link Message} payload type
@@ -41,8 +41,8 @@ import javax.annotation.Nonnull;
  * @author Steven van Beelen
  * @since 3.0
  */
-public class PayloadTypeMessageMonitorWrapper<T extends MessageMonitor<Message<?>> & MetricSet>
-        implements MessageMonitor<Message<?>>, MetricSet {
+public class PayloadTypeMessageMonitorWrapper<T extends MessageMonitor<Message> & MetricSet>
+        implements MessageMonitor<Message>, MetricSet {
 
     private final Supplier<T> monitorSupplier;
     private final Function<Class<?>, String> monitorNameBuilder;
@@ -76,10 +76,10 @@ public class PayloadTypeMessageMonitorWrapper<T extends MessageMonitor<Message<?
     }
 
     @Override
-    public MonitorCallback onMessageIngested(@Nonnull Message<?> message) {
-        String monitorName = monitorNameBuilder.apply(message.getPayloadType());
+    public MonitorCallback onMessageIngested(@Nonnull Message message) {
+        String monitorName = monitorNameBuilder.apply(message.payloadType());
 
-        MessageMonitor<Message<?>> messageMonitorForPayloadType =
+        MessageMonitor<Message> messageMonitorForPayloadType =
                 payloadTypeMonitors.computeIfAbsent(monitorName, payloadType -> monitorSupplier.get());
 
         return messageMonitorForPayloadType.onMessageIngested(message);

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,19 +16,22 @@
 
 package org.axonframework.messaging.annotation;
 
+import jakarta.annotation.Nullable;
 import org.axonframework.messaging.Message;
+import org.axonframework.messaging.MessageStream;
+import org.axonframework.messaging.annotations.HandlerComparator;
+import org.axonframework.messaging.annotations.MessageHandlingMember;
+import org.axonframework.messaging.unitofwork.ProcessingContext;
 import org.junit.jupiter.api.*;
 
-import java.lang.annotation.Annotation;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ThreadLocalRandom;
-import javax.annotation.Nonnull;
+import jakarta.annotation.Nonnull;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -146,54 +149,32 @@ class HandlerComparatorTest {
                    "Reversed-order-Object handler should appear before reversed-order-String handler");
     }
 
-    private static class StubMessageHandlingMember implements MessageHandlingMember<Object> {
-
-        private final Class<?> payloadType;
-        private final int priority;
-
-        StubMessageHandlingMember(Class<?> payloadType, int priority) {
-            this.payloadType = payloadType;
-            this.priority = priority;
-        }
+    private record StubMessageHandlingMember(Class<?> payloadType, int priority)
+            implements MessageHandlingMember<Object> {
 
         @Override
-        public Class<?> payloadType() {
-            return payloadType;
-        }
-
-        @Override
-        public int priority() {
-            return priority;
-        }
-
-        @Override
-        public boolean canHandle(@Nonnull Message<?> message) {
+        public boolean canHandle(@Nonnull Message message, @Nonnull ProcessingContext context) {
             throw new UnsupportedOperationException("Not implemented yet");
         }
 
         @Override
-        @SuppressWarnings("rawtypes")
         public boolean canHandleMessageType(@Nonnull Class<? extends Message> messageType) {
             throw new UnsupportedOperationException("Not implemented (yet)");
         }
 
         @Override
-        public Object handle(@Nonnull Message<?> message, Object target) {
+        public Object handleSync(@Nonnull Message message, @Nonnull ProcessingContext context, Object target) {
+            throw new UnsupportedOperationException("Not implemented yet");
+        }
+
+        @Override
+        public MessageStream<?> handle(@Nonnull Message message, @Nonnull ProcessingContext context,
+                                       @Nullable Object target) {
             throw new UnsupportedOperationException("Not implemented yet");
         }
 
         @Override
         public <HT> Optional<HT> unwrap(Class<HT> handlerType) {
-            return Optional.empty();
-        }
-
-        @Override
-        public boolean hasAnnotation(Class<? extends Annotation> annotationType) {
-            return false;
-        }
-
-        @Override
-        public Optional<Map<String, Object>> annotationAttributes(Class<? extends Annotation> annotationType) {
             return Optional.empty();
         }
 
@@ -211,39 +192,27 @@ class HandlerComparatorTest {
         }
     }
 
-    private static class ReversedOrderMessageHandlingMember implements MessageHandlingMember<Object> {
-
-        private final Class<?> payloadType;
-        private final int priority;
-
-        ReversedOrderMessageHandlingMember(Class<?> payloadType, int priority) {
-            this.payloadType = payloadType;
-            this.priority = priority;
-        }
+    private record ReversedOrderMessageHandlingMember(Class<?> payloadType, int priority)
+            implements MessageHandlingMember<Object> {
 
         @Override
-        public Class<?> payloadType() {
-            return payloadType;
-        }
-
-        @Override
-        public int priority() {
-            return priority;
-        }
-
-        @Override
-        public boolean canHandle(@Nonnull Message<?> message) {
+        public boolean canHandle(@Nonnull Message message, @Nonnull ProcessingContext context) {
             throw new UnsupportedOperationException("Not implemented yet");
         }
 
         @Override
-        @SuppressWarnings("rawtypes")
         public boolean canHandleMessageType(@Nonnull Class<? extends Message> messageType) {
             throw new UnsupportedOperationException("Not implemented (yet)");
         }
 
         @Override
-        public Object handle(@Nonnull Message<?> message, Object target) {
+        public Object handleSync(@Nonnull Message message, @Nonnull ProcessingContext context, Object target) {
+            throw new UnsupportedOperationException("Not implemented yet");
+        }
+
+        @Override
+        public MessageStream<?> handle(@Nonnull Message message, @Nonnull ProcessingContext context,
+                                       @Nullable Object target) {
             throw new UnsupportedOperationException("Not implemented yet");
         }
 
@@ -253,17 +222,8 @@ class HandlerComparatorTest {
         }
 
         @Override
-        public boolean hasAnnotation(Class<? extends Annotation> annotationType) {
-            return false;
-        }
-
-        @Override
-        public Optional<Map<String, Object>> annotationAttributes(Class<? extends Annotation> annotationType) {
-            return Optional.empty();
-        }
-
-        @Override
         public <R> Optional<R> attribute(String attributeKey) {
+            //noinspection unchecked
             return "ResultHandler.resultType".equals(attributeKey) ? Optional.of((R) Object.class) : Optional.empty();
         }
 

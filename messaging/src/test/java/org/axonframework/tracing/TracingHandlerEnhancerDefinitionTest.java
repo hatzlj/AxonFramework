@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,7 +19,8 @@ package org.axonframework.tracing;
 import org.axonframework.commandhandling.gateway.CommandGateway;
 import org.axonframework.common.AxonConfigurationException;
 import org.axonframework.messaging.Message;
-import org.axonframework.messaging.annotation.MessageHandlingMember;
+import org.axonframework.messaging.unitofwork.StubProcessingContext;
+import org.axonframework.messaging.annotations.MessageHandlingMember;
 import org.junit.jupiter.api.*;
 
 import java.lang.reflect.Executable;
@@ -63,13 +64,13 @@ class TracingHandlerEnhancerDefinitionTest {
                                                                                       .build();
         MessageHandlingMember<TracingHandlerEnhancerDefinitionTest> messageHandlingMember = definition.wrapHandler(
                 original);
-        Message<?> message = mock(Message.class);
-        when(original.handle(any(), any())).thenAnswer(invocationOnMock -> {
+        Message message = mock(Message.class);
+        when(original.handleSync(any(), any(), any())).thenAnswer(invocationOnMock -> {
             spanFactory.verifySpanActive("TracingHandlerEnhancerDefinitionTest.executable(MyEvent,CommandGateway)");
             invoked = true;
             return null;
         });
-        messageHandlingMember.handle(message, this);
+        messageHandlingMember.handleSync(message, StubProcessingContext.forMessage(message), this);
 
         assertTrue(invoked);
         spanFactory.verifySpanCompleted("TracingHandlerEnhancerDefinitionTest.executable(MyEvent,CommandGateway)");
@@ -98,13 +99,13 @@ class TracingHandlerEnhancerDefinitionTest {
                                                                                       .build();
         MessageHandlingMember<TracingHandlerEnhancerDefinitionTest> messageHandlingMember = definition.wrapHandler(
                 original);
-        Message<?> message = mock(Message.class);
-        when(original.handle(any(), any())).thenAnswer(invocationOnMock -> {
+        Message message = mock(Message.class);
+        when(original.handleSync(any(), any(), any())).thenAnswer(invocationOnMock -> {
             spanFactory.verifySpanActive("TracingHandlerEnhancerDefinitionTest.executable(MyEvent,CommandGateway)");
             invoked = true;
             return null;
         });
-        messageHandlingMember.handle(message, this);
+        messageHandlingMember.handleSync(message, StubProcessingContext.forMessage(message), this);
 
         assertTrue(invoked);
         spanFactory.verifySpanCompleted("TracingHandlerEnhancerDefinitionTest.executable(MyEvent,CommandGateway)");

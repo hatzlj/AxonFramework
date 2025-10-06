@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2023. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,14 +24,12 @@ import io.axoniq.axonserver.grpc.query.QueryResponse;
 import io.grpc.netty.shaded.io.netty.util.internal.OutOfDirectMemoryError;
 import org.axonframework.axonserver.connector.ErrorCode;
 import org.axonframework.axonserver.connector.util.ExceptionSerializer;
-import org.axonframework.axonserver.connector.util.ProcessingInstructionHelper;
-import org.axonframework.messaging.responsetypes.MultipleInstancesResponseType;
 import org.axonframework.queryhandling.GenericStreamingQueryMessage;
 import org.axonframework.queryhandling.QueryBus;
-import org.axonframework.queryhandling.QueryBusSpanFactory;
 import org.axonframework.queryhandling.QueryMessage;
 import org.axonframework.queryhandling.QueryResponseMessage;
 import org.axonframework.queryhandling.StreamingQueryMessage;
+import org.axonframework.queryhandling.tracing.QueryBusSpanFactory;
 import org.axonframework.util.ClasspathResolver;
 import org.reactivestreams.Publisher;
 import org.slf4j.Logger;
@@ -39,13 +37,10 @@ import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Flux;
 
 import java.lang.invoke.MethodHandles;
-import java.util.List;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
-import java.util.stream.Stream;
 
 import static org.axonframework.axonserver.connector.util.ProcessingInstructionHelper.*;
 
@@ -139,7 +134,7 @@ class QueryProcessingTask implements Runnable, FlowControl {
     public void run() {
         try {
             logger.debug("Will process query [{}]", queryRequest.getQuery());
-            QueryMessage<Object, Object> queryMessage = serializer.deserializeRequest(queryRequest);
+            QueryMessage queryMessage = serializer.deserializeRequest(queryRequest);
             spanFactory.createQueryProcessingSpan(queryMessage).run(() -> {
                 if (numberOfResults(queryRequest.getProcessingInstructionsList()) == DIRECT_QUERY_NUMBER_OF_RESULTS) {
                     if (supportsStreaming && reactorOnClassPath.get()) {
@@ -147,8 +142,6 @@ class QueryProcessingTask implements Runnable, FlowControl {
                     } else {
                         directQuery(queryMessage);
                     }
-                } else {
-                    scatterGather(queryMessage);
                 }
             });
         } catch (RuntimeException | OutOfDirectMemoryError e) {
@@ -184,40 +177,51 @@ class QueryProcessingTask implements Runnable, FlowControl {
         }
     }
 
-    private <Q, R> void streamingQuery(QueryMessage<Q, R> originalQueryMessage) {
+    /**
+     * Returns {@code true} if this task is still waiting for a result, and {@code false} otherwise.
+     * <p>
+     * Note that this would this return {@code true}, even if the streamable result has not been canceled yet!
+     *
+     * @return {@code true} if this task is still waiting for a result, and {@code false} otherwise.
+     */
+    public boolean resultPending() {
+        return streamableResultRef.get() == null;
+    }
+
+    private <Q, R> void streamingQuery(QueryMessage originalQueryMessage) {
         // noinspection unchecked
-        StreamingQueryMessage<Q, R> streamingQueryMessage = new GenericStreamingQueryMessage<>(
+        StreamingQueryMessage streamingQueryMessage = new GenericStreamingQueryMessage(
                 originalQueryMessage,
-                originalQueryMessage.getQueryName(),
-                (Class<R>) originalQueryMessage.getResponseType().getExpectedResponseType());
-        Publisher<QueryResponseMessage<R>> resultPublisher = localSegment.streamingQuery(streamingQueryMessage);
+                (Class<R>) originalQueryMessage.responseType().getExpectedResponseType());
+        Publisher<QueryResponseMessage> resultPublisher = localSegment.streamingQuery(streamingQueryMessage, null);
         setResult(streamableFluxResult(resultPublisher));
     }
 
-    private <Q, R, T> void directQuery(QueryMessage<Q, R> queryMessage) {
-        localSegment.query(queryMessage)
-                    .whenComplete((result, e) -> {
-                        if (e != null) {
-                            sendError(e);
-                        } else {
-                            try {
-                                StreamableResponse streamableResponse;
-                                if (supportsStreaming
-                                        && queryMessage.getResponseType() instanceof MultipleInstancesResponseType) {
-                                    //noinspection unchecked
-                                    streamableResponse = streamableMultiInstanceResult(
-                                            (QueryResponseMessage<List<T>>) result,
-                                            (Class<T>) queryMessage.getResponseType().getExpectedResponseType()
-                                    );
-                                } else {
-                                    streamableResponse = streamableInstanceResult(result);
-                                }
-                                setResult(streamableResponse);
-                            } catch (Throwable t) {
-                                sendError(t);
-                            }
-                        }
-                    });
+    private <T> void directQuery(QueryMessage queryMessage) {
+        // TODO #3488 - Implement as part of Axon Server Query Bus implementation
+//        localSegment.query(queryMessage)
+//                    .whenComplete((result, e) -> {
+//                        if (e != null) {
+//                            sendError(e);
+//                        } else {
+//                            try {
+//                                StreamableResponse streamableResponse;
+//                                if (supportsStreaming
+//                                        && queryMessage.responseType() instanceof MultipleInstancesResponseType) {
+//                                    //noinspection unchecked
+//                                    streamableResponse = streamableMultiInstanceResult(
+//                                            result,
+//                                            (Class<T>) queryMessage.responseType().getExpectedResponseType()
+//                                    );
+//                                } else {
+//                                    streamableResponse = streamableInstanceResult(result);
+//                                }
+//                                setResult(streamableResponse);
+//                            } catch (Throwable t) {
+//                                sendError(t);
+//                            }
+//                        }
+//                    });
     }
 
     private void setResult(StreamableResponse result) {
@@ -229,19 +233,7 @@ class QueryProcessingTask implements Runnable, FlowControl {
         }
     }
 
-    private <Q, R> void scatterGather(QueryMessage<Q, R> originalQueryMessage) {
-        Stream<QueryResponseMessage<R>> result = localSegment.scatterGather(
-                originalQueryMessage,
-                ProcessingInstructionHelper.timeout(queryRequest.getProcessingInstructionsList()),
-                TimeUnit.MILLISECONDS
-        );
-        result.forEach(r -> responseHandler.send(
-                serializer.serializeResponse(r, queryRequest.getMessageIdentifier())
-        ));
-        responseHandler.complete();
-    }
-
-    private <R> StreamableResponse streamableFluxResult(Publisher<QueryResponseMessage<R>> resultPublisher) {
+    private StreamableResponse streamableFluxResult(Publisher<QueryResponseMessage> resultPublisher) {
         return new StreamableFluxResponse(Flux.from(resultPublisher),
                                           responseHandler,
                                           serializer,
@@ -249,7 +241,7 @@ class QueryProcessingTask implements Runnable, FlowControl {
                                           clientId);
     }
 
-    private <R> StreamableMultiInstanceResponse<R> streamableMultiInstanceResult(QueryResponseMessage<List<R>> result,
+    private <R> StreamableMultiInstanceResponse<R> streamableMultiInstanceResult(QueryResponseMessage result,
                                                                                  Class<R> responseType) {
         return new StreamableMultiInstanceResponse<>(result,
                                                      responseType,
@@ -258,7 +250,7 @@ class QueryProcessingTask implements Runnable, FlowControl {
                                                      queryRequest.getMessageIdentifier());
     }
 
-    private StreamableInstanceResponse streamableInstanceResult(QueryResponseMessage<?> result) {
+    private StreamableInstanceResponse streamableInstanceResult(QueryResponseMessage result) {
         return new StreamableInstanceResponse(result, responseHandler, serializer, queryRequest.getMessageIdentifier());
     }
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2020. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,11 +16,13 @@
 
 package org.axonframework.spring.config.annotation;
 
+import jakarta.annotation.Nonnull;
+import jakarta.annotation.Nullable;
 import org.axonframework.common.Priority;
-import org.axonframework.common.annotation.AnnotationUtils;
-import org.axonframework.messaging.Message;
-import org.axonframework.messaging.annotation.ParameterResolver;
-import org.axonframework.messaging.annotation.ParameterResolverFactory;
+import org.axonframework.common.annotations.AnnotationUtils;
+import org.axonframework.messaging.annotations.ParameterResolver;
+import org.axonframework.messaging.annotations.ParameterResolverFactory;
+import org.axonframework.messaging.unitofwork.ProcessingContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.config.AutowireCapableBeanFactory;
 import org.springframework.beans.factory.config.DependencyDescriptor;
@@ -57,8 +59,9 @@ public class SpringBeanDependencyResolverFactory implements ParameterResolverFac
         this.applicationContext = applicationContext;
     }
 
+    @Nullable
     @Override
-    public ParameterResolver<?> createInstance(Executable executable, Parameter[] parameters, int parameterIndex) {
+    public ParameterResolver<?> createInstance(@Nonnull Executable executable, @Nonnull Parameter[] parameters, int parameterIndex) {
         final Optional<Boolean> ann =
                 AnnotationUtils.findAnnotationAttribute(parameters[parameterIndex], Autowired.class, "required");
 
@@ -92,13 +95,14 @@ public class SpringBeanDependencyResolverFactory implements ParameterResolverFac
             this.dependencyDescriptor = dependencyDescriptor;
         }
 
+        @Nullable
         @Override
-        public Object resolveParameterValue(Message<?> message) {
+        public Object resolveParameterValue(@Nonnull ProcessingContext context) {
             return beanFactory.resolveDependency(dependencyDescriptor, null);
         }
 
         @Override
-        public boolean matches(Message<?> message) {
+        public boolean matches(@Nonnull ProcessingContext context) {
             return true;
         }
     }

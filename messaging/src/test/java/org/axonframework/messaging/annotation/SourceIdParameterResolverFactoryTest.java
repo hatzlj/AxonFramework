@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2023. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,7 +18,14 @@ package org.axonframework.messaging.annotation;
 
 import org.axonframework.commandhandling.CommandMessage;
 import org.axonframework.commandhandling.GenericCommandMessage;
-import org.axonframework.eventhandling.GenericDomainEventMessage;
+import org.axonframework.eventhandling.EventMessage;
+import org.axonframework.eventhandling.EventTestUtils;
+import org.axonframework.messaging.MessageType;
+import org.axonframework.messaging.annotations.ParameterResolver;
+import org.axonframework.messaging.annotations.SourceId;
+import org.axonframework.messaging.annotations.SourceIdParameterResolverFactory;
+import org.axonframework.messaging.unitofwork.ProcessingContext;
+import org.axonframework.messaging.unitofwork.StubProcessingContext;
 import org.junit.jupiter.api.*;
 
 import java.lang.reflect.Method;
@@ -62,18 +69,21 @@ class SourceIdParameterResolverFactoryTest {
     void resolvesToAggregateIdentifierWhenAnnotatedForDomainEventMessage() {
         ParameterResolver<String> resolver =
                 testSubject.createInstance(sourceIdMethod, sourceIdMethod.getParameters(), 0);
-        final GenericDomainEventMessage<Object> eventMessage =
-                new GenericDomainEventMessage<>("test", UUID.randomUUID().toString(), 0L, null);
-        assertTrue(resolver.matches(eventMessage));
-        assertEquals(eventMessage.getAggregateIdentifier(), resolver.resolveParameterValue(eventMessage));
+        EventMessage eventMessage = EventTestUtils.createEvent(0);
+        String aggregateId = UUID.randomUUID().toString();
+        ProcessingContext context = StubProcessingContext.forMessage(eventMessage, aggregateId, 0L, "aggregateType");
+        assertTrue(resolver.matches(context));
+        assertEquals(aggregateId, resolver.resolveParameterValue(context));
     }
 
     @Test
     void doesNotMatchWhenAnnotatedForCommandMessage() {
         ParameterResolver<String> resolver =
                 testSubject.createInstance(sourceIdMethod, sourceIdMethod.getParameters(), 0);
-        CommandMessage<Object> commandMessage = GenericCommandMessage.asCommandMessage("test");
-        assertFalse(resolver.matches(commandMessage));
+        CommandMessage commandMessage =
+                new GenericCommandMessage(new MessageType("command"), "test");
+        ProcessingContext context = StubProcessingContext.forMessage(commandMessage);
+        assertFalse(resolver.matches(context));
     }
 
     @Test

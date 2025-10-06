@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2024. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,25 +24,24 @@ import io.axoniq.axonserver.grpc.control.EventProcessorInfo;
 import io.axoniq.axonserver.grpc.control.PlatformOutboundInstruction;
 import org.axonframework.axonserver.connector.AxonServerConfiguration;
 import org.axonframework.axonserver.connector.AxonServerConnectionManager;
-import org.axonframework.config.EventProcessingConfiguration;
-import org.axonframework.eventhandling.EventProcessor;
-import org.axonframework.eventhandling.StreamingEventProcessor;
-import org.axonframework.eventhandling.SubscribingEventProcessor;
-import org.axonframework.eventhandling.tokenstore.TokenStore;
-import org.axonframework.lifecycle.Lifecycle;
+import org.axonframework.common.transaction.TransactionManager;
+import org.axonframework.configuration.Configuration;
+import org.axonframework.eventhandling.processors.EventProcessor;
+import org.axonframework.eventhandling.processors.streaming.StreamingEventProcessor;
+import org.axonframework.eventhandling.processors.streaming.token.store.TokenStore;
+import org.axonframework.eventhandling.processors.subscribing.SubscribingEventProcessor;
 import org.axonframework.lifecycle.Phase;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Collections;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Supplier;
-import javax.annotation.Nonnull;
 
 import static java.util.stream.Collectors.toMap;
+import static org.axonframework.common.FutureUtils.joinAndUnwrap;
 
 /**
  * Service that listens to {@link PlatformOutboundInstruction}s to control {@link EventProcessor}s when for example
@@ -51,19 +50,19 @@ import static java.util.stream.Collectors.toMap;
  * @author Sara Pellegrini
  * @since 4.0
  */
-public class EventProcessorControlService implements Lifecycle {
+public class EventProcessorControlService {
 
     private static final Logger logger = LoggerFactory.getLogger(EventProcessorControlService.class);
     private static final String SUBSCRIBING_EVENT_PROCESSOR_MODE = "Subscribing";
     private static final String UNKNOWN_EVENT_PROCESSOR_MODE = "Unknown";
 
     protected final AxonServerConnectionManager axonServerConnectionManager;
-    protected final EventProcessingConfiguration eventProcessingConfiguration;
+    protected final Configuration eventProcessingConfiguration;
     protected final String context;
     protected final Map<String, AxonServerConfiguration.Eventhandling.ProcessorSettings> processorConfig;
 
     /**
-     * Initialize a {@link EventProcessorControlService}.
+     * Initialize a {@code EventProcessorControlService}.
      * <p>
      * This service adds processor instruction handlers to the {@link ControlChannel} of the
      * {@link AxonServerConnectionManager#getDefaultContext() default context}. Doing so ensures operation like the
@@ -80,7 +79,7 @@ public class EventProcessorControlService implements Lifecycle {
      *                                     from.
      */
     public EventProcessorControlService(AxonServerConnectionManager axonServerConnectionManager,
-                                        EventProcessingConfiguration eventProcessingConfiguration,
+                                        Configuration eventProcessingConfiguration,
                                         AxonServerConfiguration axonServerConfiguration) {
         this(axonServerConnectionManager,
              eventProcessingConfiguration,
@@ -89,32 +88,7 @@ public class EventProcessorControlService implements Lifecycle {
     }
 
     /**
-     * Initialize a {@link EventProcessorControlService}.
-     * <p>
-     * This service adds processor instruction handlers to the {@link ControlChannel} of the given {@code context}.
-     * Doing so ensures operation like the {@link EventProcessor#start() start} and
-     * {@link EventProcessor#shutDown() shutdown} can be triggered through Axon Server. Furthermore, it sets the
-     * configured load balancing strategies} through the {@link AdminChannel}  of the {@code context}.
-     *
-     * @param axonServerConnectionManager  A {@link AxonServerConnectionManager} from which to retrieve the
-     *                                     {@link ControlChannel} and {@link AdminChannel}.
-     * @param eventProcessingConfiguration The {@link EventProcessor} configuration of this application, used to
-     *                                     retrieve the registered event processors from.
-     * @param context                      The context of this application instance to retrieve the
-     *                                     {@link ControlChannel} and {@link AdminChannel} for.
-     * @deprecated Please use
-     * {@link #EventProcessorControlService(AxonServerConnectionManager, EventProcessingConfiguration, String, Map)} to
-     * ensure processor settings are provided.
-     */
-    @Deprecated
-    public EventProcessorControlService(AxonServerConnectionManager axonServerConnectionManager,
-                                        EventProcessingConfiguration eventProcessingConfiguration,
-                                        String context) {
-        this(axonServerConnectionManager, eventProcessingConfiguration, context, Collections.emptyMap());
-    }
-
-    /**
-     * Initialize a {@link EventProcessorControlService}.
+     * Initialize a {@code EventProcessorControlService}.
      * <p>
      * This service adds processor instruction handlers to the {@link ControlChannel} of the given {@code context}.
      * Doing so ensures operation like the {@link EventProcessor#start() start} and
@@ -131,18 +105,13 @@ public class EventProcessorControlService implements Lifecycle {
      *                                     (for example) retrieve the load balancing strategies from.
      */
     public EventProcessorControlService(AxonServerConnectionManager axonServerConnectionManager,
-                                        EventProcessingConfiguration eventProcessingConfiguration,
+                                        Configuration eventProcessingConfiguration,
                                         String context,
                                         Map<String, AxonServerConfiguration.Eventhandling.ProcessorSettings> processorConfig) {
         this.axonServerConnectionManager = axonServerConnectionManager;
         this.eventProcessingConfiguration = eventProcessingConfiguration;
         this.context = context;
         this.processorConfig = processorConfig;
-    }
-
-    @Override
-    public void registerLifecycleHandlers(@Nonnull LifecycleRegistry lifecycle) {
-        lifecycle.onStart(Phase.INSTRUCTION_COMPONENTS, this::start);
     }
 
     /**
@@ -159,7 +128,8 @@ public class EventProcessorControlService implements Lifecycle {
             return;
         }
 
-        Map<String, EventProcessor> eventProcessors = eventProcessingConfiguration.eventProcessors();
+        // TODO #3521
+        Map<String, EventProcessor> eventProcessors = eventProcessingConfiguration.getComponent(Map.class);
         AxonServerConnection connection = axonServerConnectionManager.getConnection(context);
 
         registerInstructionHandlers(connection, eventProcessors);
@@ -174,7 +144,9 @@ public class EventProcessorControlService implements Lifecycle {
                                .stream()
                                .filter(entry -> {
                                    if (!processorNames.contains(entry.getKey())) {
-                                       logger.info("Event Processor [{}] is not a registered. Please check the name or register the Event Processor", entry.getKey());
+                                       logger.info(
+                                               "Event Processor [{}] is not a registered. Please check the name or register the Event Processor",
+                                               entry.getKey());
                                        return false;
                                    }
                                    return true;
@@ -184,7 +156,9 @@ public class EventProcessorControlService implements Lifecycle {
         strategiesPerProcessor.forEach((processorName, strategy) -> {
             Optional<String> optionalIdentifier = tokenStoreIdentifierFor(processorName);
             if (!optionalIdentifier.isPresent()) {
-                logger.warn("Cannot find token store identifier for processor [{}]. Load balancing cannot be configured without this identifier.", processorName);
+                logger.warn(
+                        "Cannot find token store identifier for processor [{}]. Load balancing cannot be configured without this identifier.",
+                        processorName);
                 return;
             }
             String tokenStoreIdentifier = optionalIdentifier.get();
@@ -217,9 +191,12 @@ public class EventProcessorControlService implements Lifecycle {
     }
 
     private Optional<String> tokenStoreIdentifierFor(String processorName) {
-        TokenStore tokenStore = eventProcessingConfiguration.tokenStore(processorName);
-        return eventProcessingConfiguration.transactionManager(processorName)
-                                           .fetchInTransaction(tokenStore::retrieveStorageIdentifier);
+        // TODO #3521 - Be sure to be able to retrieve processor-specific components from their respective Modules
+        TokenStore tokenStore = eventProcessingConfiguration.getComponent(TokenStore.class);
+        return eventProcessingConfiguration.getComponent(TransactionManager.class)
+                                           .fetchInTransaction(
+                                                   () -> joinAndUnwrap(tokenStore.retrieveStorageIdentifier(null))
+                                           );
     }
 
     private void registerInstructionHandlers(AxonServerConnection connection,
@@ -249,7 +226,7 @@ public class EventProcessorControlService implements Lifecycle {
 
     private EventProcessorInfo subscribingProcessorInfo(EventProcessor eventProcessor) {
         return EventProcessorInfo.newBuilder()
-                                 .setProcessorName(eventProcessor.getName())
+                                 .setProcessorName(eventProcessor.name())
                                  .setMode(SUBSCRIBING_EVENT_PROCESSOR_MODE)
                                  .setIsStreamingProcessor(false)
                                  .build();
@@ -257,7 +234,7 @@ public class EventProcessorControlService implements Lifecycle {
 
     private EventProcessorInfo unknownProcessorTypeInfo(EventProcessor eventProcessor) {
         return EventProcessorInfo.newBuilder()
-                                 .setProcessorName(eventProcessor.getName())
+                                 .setProcessorName(eventProcessor.name())
                                  .setMode(UNKNOWN_EVENT_PROCESSOR_MODE)
                                  .setIsStreamingProcessor(false)
                                  .build();
@@ -281,12 +258,11 @@ public class EventProcessorControlService implements Lifecycle {
                                 name);
                     return CompletableFuture.completedFuture(false);
                 } else {
-                    ((StreamingEventProcessor) processor).releaseSegment(segmentId);
+                    return ((StreamingEventProcessor) processor).releaseSegment(segmentId).thenApply(r -> true);
                 }
             } catch (Exception e) {
                 return exceptionallyCompletedFuture(e);
             }
-            return CompletableFuture.completedFuture(true);
         }
 
         @Override
@@ -344,22 +320,12 @@ public class EventProcessorControlService implements Lifecycle {
 
         @Override
         public CompletableFuture<Void> pauseProcessor() {
-            try {
-                processor.shutDown();
-                return CompletableFuture.completedFuture(null);
-            } catch (Exception e) {
-                return exceptionallyCompletedFuture(e);
-            }
+            return processor.shutdown();
         }
 
         @Override
         public CompletableFuture<Void> startProcessor() {
-            try {
-                processor.start();
-                return CompletableFuture.completedFuture(null);
-            } catch (Exception e) {
-                return exceptionallyCompletedFuture(e);
-            }
+            return processor.start();
         }
 
         private <T> CompletableFuture<T> exceptionallyCompletedFuture(Exception e) {

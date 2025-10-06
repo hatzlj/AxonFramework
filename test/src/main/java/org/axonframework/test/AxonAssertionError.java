@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2023. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,10 @@
 
 package org.axonframework.test;
 
+import jakarta.annotation.Nonnull;
+
 import java.util.Arrays;
+import java.util.Objects;
 
 /**
  * Error indication that an Assertion failed during a test case. The message of the error contains detailed information
@@ -32,10 +35,22 @@ public class AxonAssertionError extends AssertionError {
     /**
      * Create a new error instance using the given {@code detailMessage}.
      *
-     * @param detailMessage a detailed description of the failed assertion
+     * @param detailMessage A detailed description of the failed assertion.
      */
-    public AxonAssertionError(String detailMessage) {
+    public AxonAssertionError(@Nonnull String detailMessage) {
         super(detailMessage);
+        StackTraceElement[] original = getStackTrace();
+        setStackTrace(cleanStackTrace(original));
+    }
+
+    /**
+     * Create a new error instance using the given {@code cause} and {@code detailMessage}.
+     *
+     * @param detailMessage A detailed description of the failed assertion.
+     * @param cause         The cause of the error.
+     */
+    public AxonAssertionError(@Nonnull String detailMessage, @Nonnull Throwable cause) {
+        super(Objects.requireNonNull(detailMessage), Objects.requireNonNull(cause));
         StackTraceElement[] original = getStackTrace();
         setStackTrace(cleanStackTrace(original));
     }

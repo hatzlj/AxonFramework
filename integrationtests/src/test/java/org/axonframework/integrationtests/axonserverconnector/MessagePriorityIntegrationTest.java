@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2023. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,128 +20,119 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import io.grpc.ManagedChannelBuilder;
 import org.axonframework.axonserver.connector.AxonServerConfiguration;
 import org.axonframework.axonserver.connector.AxonServerConnectionManager;
-import org.axonframework.axonserver.connector.command.AxonServerCommandBus;
-import org.axonframework.axonserver.connector.command.CommandPriorityCalculator;
-import org.axonframework.axonserver.connector.query.AxonServerQueryBus;
-import org.axonframework.axonserver.connector.query.QueryPriorityCalculator;
-import org.axonframework.commandhandling.CommandBus;
-import org.axonframework.commandhandling.GenericCommandMessage;
+import org.axonframework.axonserver.connector.command.AxonServerCommandBusConnector;
+import org.axonframework.commandhandling.CommandMessage;
+import org.axonframework.commandhandling.CommandPriorityCalculator;
+import org.axonframework.commandhandling.GenericCommandResultMessage;
 import org.axonframework.commandhandling.SimpleCommandBus;
-import org.axonframework.commandhandling.distributed.AnnotationRoutingStrategy;
-import org.axonframework.messaging.responsetypes.ResponseTypes;
-import org.axonframework.queryhandling.GenericQueryMessage;
-import org.axonframework.queryhandling.QueryBus;
-import org.axonframework.queryhandling.QueryResponseMessage;
-import org.axonframework.queryhandling.SimpleQueryBus;
-import org.axonframework.serialization.Serializer;
-import org.axonframework.serialization.json.JacksonSerializer;
+import org.axonframework.commandhandling.annotations.AnnotationRoutingStrategy;
+import org.axonframework.commandhandling.distributed.CommandBusConnector;
+import org.axonframework.commandhandling.distributed.DistributedCommandBus;
+import org.axonframework.commandhandling.distributed.DistributedCommandBusConfiguration;
+import org.axonframework.commandhandling.distributed.PayloadConvertingCommandBusConnector;
+import org.axonframework.commandhandling.gateway.CommandGateway;
+import org.axonframework.commandhandling.gateway.DefaultCommandGateway;
+import org.axonframework.messaging.ClassBasedMessageTypeResolver;
+import org.axonframework.messaging.EmptyApplicationContext;
+import org.axonframework.messaging.MessageStream;
+import org.axonframework.messaging.MessageType;
+import org.axonframework.messaging.QualifiedName;
+import org.axonframework.messaging.conversion.DelegatingMessageConverter;
+import org.axonframework.messaging.unitofwork.SimpleUnitOfWorkFactory;
+import org.axonframework.serialization.json.JacksonConverter;
 import org.axonframework.test.server.AxonServerContainer;
 import org.junit.jupiter.api.*;
-import org.testcontainers.images.PullPolicy;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
-import java.time.Duration;
+import java.util.Collections;
 import java.util.Objects;
 import java.util.Queue;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
-import static org.axonframework.commandhandling.GenericCommandMessage.asCommandMessage;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Test class validating whether the provided message priority for commands and queries is respected. These priorities
- * are typically defined by the {@link CommandPriorityCalculator} and {@link QueryPriorityCalculator} for commands and
- * queries respectively.
+ * Test class validating whether the provided message priority for {@link CommandMessage#priority() commands} is
+ * respected.
+ * <p>
+ * Priorities for command messages are calculated through the {@link CommandPriorityCalculator} and typically set by the
+ * {@link CommandGateway}.
  *
+ * @author Jens Mayer
  * @author Steven van Beelen
  */
 @Testcontainers
 class MessagePriorityIntegrationTest {
 
-    private static final String HOSTNAME = "localhost";
+    @Container
+    private static final AxonServerContainer axonServer = new AxonServerContainer()
+            .withAxonServerHostname("localhost")
+            .withDevMode(true);
 
     private static final int PRIORITY = 42;
     private static final int REGULAR = 0;
 
-    @Container
-    private static final AxonServerContainer axonServer =
-            new AxonServerContainer()
-                    .withAxonServerName("axonserver")
-                    .withAxonServerHostname(HOSTNAME)
-                    .withDevMode(true)
-                    .withEnv("AXONIQ_AXONSERVER_INSTRUCTION-CACHE-TIMEOUT", "1000")
-                    .withImagePullPolicy(PullPolicy.ageBased(Duration.ofDays(1)))
-                    .withNetworkAliases("axonserver");
+    private static final Logger logger = LoggerFactory.getLogger(MessagePriorityIntegrationTest.class);
 
     private AxonServerConnectionManager connectionManager;
-    private AxonServerCommandBus commandBus;
-    private AxonServerQueryBus queryBus;
+    private DistributedCommandBus commandBus;
+    private CommandGateway commandGateway;
 
     @BeforeEach
     void setUp() {
-        Serializer serializer = JacksonSerializer.defaultSerializer();
-
-        String server = axonServer.getHost() + ":" + axonServer.getGrpcPort();
-        AxonServerConfiguration configuration = AxonServerConfiguration.builder()
-                                                                       .componentName("messagePriority")
-                                                                       .servers(server)
-                                                                       .build();
-        configuration.setCommandThreads(1);
-        configuration.setQueryThreads(1);
+        var server = axonServer.getHost() + ":" + axonServer.getGrpcPort();
+        var serverConfiguration = AxonServerConfiguration.builder()
+                                                         .componentName("messagePriority")
+                                                         .servers(server)
+                                                         .build();
+        serverConfiguration.setCommandThreads(1);
+        serverConfiguration.setQueryThreads(1);
         connectionManager = AxonServerConnectionManager.builder()
-                                                       .axonServerConfiguration(configuration)
+                                                       .axonServerConfiguration(serverConfiguration)
                                                        .channelCustomizer(ManagedChannelBuilder::directExecutor)
                                                        .build();
         connectionManager.start();
 
-        CommandPriorityCalculator commandPriorityCalculator =
-                command -> Objects.equals(command.getPayloadType(), PriorityMessage.class) ? PRIORITY : REGULAR;
-        CommandBus localCommandBus = SimpleCommandBus.builder().build();
-        commandBus = AxonServerCommandBus.builder()
-                                         .axonServerConnectionManager(connectionManager)
-                                         .configuration(configuration)
-                                         .localSegment(localCommandBus)
-                                         .serializer(serializer)
-                                         .routingStrategy(AnnotationRoutingStrategy.defaultStrategy())
-                                         .priorityCalculator(commandPriorityCalculator)
-                                         .build();
-        commandBus.start();
+        var unitOfWorkFactory = new SimpleUnitOfWorkFactory(
+                EmptyApplicationContext.INSTANCE,
+                c -> c.workScheduler(Executors.newSingleThreadExecutor())
+        );
+        var localCommandBus = new SimpleCommandBus(unitOfWorkFactory, Collections.emptyList());
+        var commandBusConnector =
+                new AxonServerCommandBusConnector(connectionManager.getConnection(), new AxonServerConfiguration());
+        CommandBusConnector serializingConnector = new PayloadConvertingCommandBusConnector(
+                commandBusConnector,
+                new DelegatingMessageConverter(new JacksonConverter()),
+                byte[].class
+        );
 
-        QueryPriorityCalculator queryPriorityCalculator =
-                query -> Objects.equals(query.getPayloadType(), PriorityMessage.class) ? PRIORITY : REGULAR;
-        QueryBus localQueryBus = SimpleQueryBus.builder().build();
-        queryBus = AxonServerQueryBus.builder()
-                                     .axonServerConnectionManager(connectionManager)
-                                     .configuration(configuration)
-                                     .localSegment(localQueryBus)
-                                     .updateEmitter(localQueryBus.queryUpdateEmitter())
-                                     .messageSerializer(serializer)
-                                     .genericSerializer(serializer)
-                                     .priorityCalculator(queryPriorityCalculator)
-                                     .build();
-        queryBus.start();
+        CommandPriorityCalculator commandPriorityCalculator =
+                command -> Objects.equals(command.payloadType(), PriorityMessage.class) ? PRIORITY : REGULAR;
+
+        var commandBusConfig = DistributedCommandBusConfiguration.DEFAULT.loadFactor(1);
+        commandBus = new DistributedCommandBus(localCommandBus, serializingConnector, commandBusConfig);
+        commandGateway = new DefaultCommandGateway(commandBus,
+                                                   new ClassBasedMessageTypeResolver(),
+                                                   commandPriorityCalculator,
+                                                   new AnnotationRoutingStrategy());
     }
 
     @AfterEach
     void tearDown() {
-        commandBus.shutdownDispatching();
-        queryBus.shutdownDispatching();
-
-        commandBus.disconnect();
-        queryBus.disconnect();
-
-        connectionManager.shutdown();
+        if (connectionManager != null) {
+            connectionManager.shutdown();
+        }
     }
 
-    @SuppressWarnings("resource")
     @Test
-    void commandPriorityIsRespectedWithinThresholdByAxonServerCommandBus() throws InterruptedException {
-        int numberOfCommands = 10;
+    void commandPriorityIsRespectedWithinThresholdByDistributedCommandBus() throws InterruptedException {
+        int numberOfCommands = 20;
         // No priority command should occur in the last fifth part of all dispatched commands.
         // Quite some lenience is given to account for thread ordering within the buses.
         int priorityThreshold = numberOfCommands - (numberOfCommands / 5);
@@ -150,32 +141,51 @@ class MessagePriorityIntegrationTest {
         CountDownLatch processingGate = new CountDownLatch(1);
         CountDownLatch finishedGate = new CountDownLatch(numberOfCommands);
 
-        commandBus.subscribe("processGate", command -> {
-            processingGate.await();
-            return "start-processing";
+        commandBus.subscribe(new QualifiedName(StartMessage.class), (command, context) -> {
+            try {
+                processingGate.await();
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+            return MessageStream.just(new GenericCommandResultMessage(new MessageType(String.class), "started"));
         });
-        commandBus.subscribe("regular", command -> "regular");
-        commandBus.subscribe("priority", command -> "priority");
 
+        commandBus.subscribe(
+                new QualifiedName(RegularMessage.class),
+                (command, context) -> MessageStream.just(
+                        new GenericCommandResultMessage(new MessageType(String.class), "regular")
+                )
+        );
+
+        commandBus.subscribe(
+                new QualifiedName(PriorityMessage.class),
+                (command, context) -> MessageStream.just(
+                        new GenericCommandResultMessage(new MessageType(String.class), "priority")
+                )
+        );
+
+        logger.info("About to start dispatcher.");
         Thread dispatcher = new Thread(() -> {
-            commandBus.dispatch(new GenericCommandMessage<>(asCommandMessage("start"), "processGate"));
+            commandGateway.send(new StartMessage("start"), null);
+
             for (int i = 0; i < numberOfCommands; i++) {
-                GenericCommandMessage<Object> command;
+                Object command;
                 if (i % 5 == 0) {
-                    command = new GenericCommandMessage<>(asCommandMessage(new PriorityMessage(Integer.toString(i))),
-                                                          "priority");
+                    command = new PriorityMessage(Integer.toString(i));
                 } else {
-                    command = new GenericCommandMessage<>(asCommandMessage(new RegularMessage(Integer.toString(i))),
-                                                          "regular");
+                    command = new RegularMessage(Integer.toString(i));
                 }
-                commandBus.dispatch(command, (c, r) -> {
-                    if (r.getPayload().equals("regular")) {
+                commandGateway.send(command, null).onSuccess((resultMessage) -> {
+                    //noinspection DataFlowIssue
+                    if (resultMessage.payload().toString().equals("regular")) {
                         handlingOrder.add(Handled.regular());
                     } else {
                         handlingOrder.add(Handled.priority());
                     }
+                    logger.info("Command {} handled", command);
                     finishedGate.countDown();
                 });
+                logger.info("Iteration {}: command {} sent", i, command);
             }
             processingGate.countDown();
         });
@@ -197,71 +207,13 @@ class MessagePriorityIntegrationTest {
         dispatcher.join(1000);
     }
 
-    @SuppressWarnings("resource")
-    @Test
-    void queryPriorityIsRespectedWithinThresholdByAxonServerQueryBus() throws InterruptedException {
-        int numberOfQueries = 10;
-        // No priority query should occur in the last fifth part of all dispatched queries.
-        // Quite some lenience is given to account for thread ordering within the buses.
-        int priorityThreshold = numberOfQueries - (numberOfQueries / 5);
-
-        Queue<Handled> handlingOrder = new ConcurrentLinkedQueue<>();
-        CountDownLatch processingGate = new CountDownLatch(1);
-        CountDownLatch finishedGate = new CountDownLatch(numberOfQueries);
-
-        queryBus.subscribe("processGate", String.class, query -> {
-            processingGate.await();
-            return "start-processing";
-        });
-        queryBus.subscribe("regular", String.class, query -> "regular");
-        queryBus.subscribe("priority", String.class, query -> "priority");
-
-        Thread dispatcher = new Thread(() -> {
-            queryBus.query(new GenericQueryMessage<>("start", "processGate", ResponseTypes.instanceOf(String.class)));
-            for (int i = 0; i < numberOfQueries; i++) {
-                GenericQueryMessage<?, String> query;
-                if (i % 5 == 0) {
-                    query = new GenericQueryMessage<>(
-                            new PriorityMessage(Integer.toString(i)), "priority", ResponseTypes.instanceOf(String.class)
-                    );
-                } else {
-                    query = new GenericQueryMessage<>(
-                            new RegularMessage(Integer.toString(i)), "regular", ResponseTypes.instanceOf(String.class)
-                    );
-                }
-                CompletableFuture<QueryResponseMessage<String>> result = queryBus.query(query);
-                result.whenComplete((response, ex) -> {
-                    if (response.getPayload().equals("regular")) {
-                        handlingOrder.add(Handled.regular());
-                    } else {
-                        handlingOrder.add(Handled.priority());
-                    }
-                    finishedGate.countDown();
-                });
-            }
-            processingGate.countDown();
-        });
-        dispatcher.start();
-
-        assertTrue(finishedGate.await(2, TimeUnit.SECONDS),
-                   () -> "Failed with [" + finishedGate.getCount() + "] unprocessed query/queries");
-
-        assertEquals(numberOfQueries, handlingOrder.size());
-        for (int i = 0; i < handlingOrder.size(); i++) {
-            Handled handled = handlingOrder.poll();
-            if (i >= priorityThreshold) {
-                assertFalse(handled.priority,
-                            "A priority command was handled at index [" + i + "], "
-                                    + "while it is at least expected to come before [" + priorityThreshold + "].");
-            }
-        }
-
-        dispatcher.join(1000);
-    }
-
     private static class Handled {
 
         private final boolean priority;
+
+        private Handled(boolean priority) {
+            this.priority = priority;
+        }
 
         private static Handled priority() {
             return new Handled(true);
@@ -269,10 +221,6 @@ class MessagePriorityIntegrationTest {
 
         private static Handled regular() {
             return new Handled(false);
-        }
-
-        private Handled(boolean priority) {
-            this.priority = priority;
         }
 
         @Override
@@ -298,31 +246,15 @@ class MessagePriorityIntegrationTest {
         }
     }
 
-    @SuppressWarnings("unused")
-    private static class RegularMessage {
+    private record StartMessage(@JsonProperty("text") String text) {
 
-        private final String text;
-
-        public RegularMessage(@JsonProperty("text") String text) {
-            this.text = text;
-        }
-
-        public String getText() {
-            return text;
-        }
     }
 
-    @SuppressWarnings("unused")
-    private static class PriorityMessage {
+    private record RegularMessage(@JsonProperty("text") String text) {
 
-        private final String text;
+    }
 
-        public PriorityMessage(@JsonProperty("text") String text) {
-            this.text = text;
-        }
+    private record PriorityMessage(@JsonProperty("text") String text) {
 
-        public String getText() {
-            return text;
-        }
     }
 }

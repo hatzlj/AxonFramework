@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,7 +19,8 @@ package org.axonframework.messaging.unitofwork;
 import org.axonframework.common.transaction.Transaction;
 import org.axonframework.common.transaction.TransactionManager;
 import org.axonframework.eventhandling.GenericEventMessage;
-import org.axonframework.messaging.MetaData;
+import org.axonframework.messaging.MessageType;
+import org.axonframework.messaging.Metadata;
 import org.axonframework.messaging.ResultMessage;
 import org.axonframework.messaging.correlation.ThrowingCorrelationDataProvider;
 import org.axonframework.utils.MockException;
@@ -29,8 +30,8 @@ import org.mockito.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import java.util.concurrent.Callable;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 
 import static org.axonframework.messaging.GenericResultMessage.asResultMessage;
 import static org.junit.jupiter.api.Assertions.*;
@@ -42,7 +43,7 @@ import static org.mockito.Mockito.*;
 class AbstractUnitOfWorkTest {
 
     private List<PhaseTransition> phaseTransitions;
-    private UnitOfWork<?> subject;
+    private LegacyUnitOfWork<?> subject;
 
     @SuppressWarnings({"unchecked"})
     @BeforeEach
@@ -50,7 +51,9 @@ class AbstractUnitOfWorkTest {
         while (CurrentUnitOfWork.isStarted()) {
             CurrentUnitOfWork.get().rollback();
         }
-        subject = spy(new DefaultUnitOfWork(new GenericEventMessage<>("Input 1")) {
+        subject = spy(new LegacyDefaultUnitOfWork(
+                new GenericEventMessage(new MessageType("event"), "Input 1")
+        ) {
             @Override
             public String toString() {
                 return "unitOfWork";
@@ -60,12 +63,14 @@ class AbstractUnitOfWorkTest {
         registerListeners(subject);
     }
 
-    private void registerListeners(UnitOfWork<?> unitOfWork) {
-        unitOfWork.onPrepareCommit(u -> phaseTransitions.add(new PhaseTransition(u, UnitOfWork.Phase.PREPARE_COMMIT)));
-        unitOfWork.onCommit(u -> phaseTransitions.add(new PhaseTransition(u, UnitOfWork.Phase.COMMIT)));
-        unitOfWork.afterCommit(u -> phaseTransitions.add(new PhaseTransition(u, UnitOfWork.Phase.AFTER_COMMIT)));
-        unitOfWork.onRollback(u -> phaseTransitions.add(new PhaseTransition(u, UnitOfWork.Phase.ROLLBACK)));
-        unitOfWork.onCleanup(u -> phaseTransitions.add(new PhaseTransition(u, UnitOfWork.Phase.CLEANUP)));
+    private void registerListeners(LegacyUnitOfWork<?> unitOfWork) {
+        unitOfWork.onPrepareCommit(
+                u -> phaseTransitions.add(new PhaseTransition(u, LegacyUnitOfWork.Phase.PREPARE_COMMIT))
+        );
+        unitOfWork.onCommit(u -> phaseTransitions.add(new PhaseTransition(u, LegacyUnitOfWork.Phase.COMMIT)));
+        unitOfWork.afterCommit(u -> phaseTransitions.add(new PhaseTransition(u, LegacyUnitOfWork.Phase.AFTER_COMMIT)));
+        unitOfWork.onRollback(u -> phaseTransitions.add(new PhaseTransition(u, LegacyUnitOfWork.Phase.ROLLBACK)));
+        unitOfWork.onCleanup(u -> phaseTransitions.add(new PhaseTransition(u, LegacyUnitOfWork.Phase.CLEANUP)));
     }
 
     @AfterEach
@@ -95,27 +100,27 @@ class AbstractUnitOfWorkTest {
 
     @Test
     void executeTask() {
-        Runnable task = mock(Runnable.class);
-        doNothing().when(task).run();
+        Consumer task = mock(Consumer.class);
+        doNothing().when(task).accept(any());
         subject.execute(task);
         InOrder inOrder = inOrder(task, subject);
         inOrder.verify(subject).start();
-        inOrder.verify(task).run();
+        inOrder.verify(task).accept(any());
         inOrder.verify(subject).commit();
         assertFalse(subject.isActive());
     }
 
     @Test
     void executeFailingTask() {
-        Runnable task = mock(Runnable.class);
+        Consumer task = mock(Consumer.class);
         MockException mockException = new MockException();
-        doThrow(mockException).when(task).run();
+        doThrow(mockException).when(task).accept(any());
         try {
             subject.execute(task);
         } catch (MockException e) {
             InOrder inOrder = inOrder(task, subject);
             inOrder.verify(subject).start();
-            inOrder.verify(task).run();
+            inOrder.verify(task).accept(any());
             inOrder.verify(subject).rollback(e);
             assertNotNull(subject.getExecutionResult());
             assertSame(mockException, subject.getExecutionResult().getExceptionResult());
@@ -127,24 +132,24 @@ class AbstractUnitOfWorkTest {
     @Test
     void executeTaskWithResult() throws Exception {
         Object taskResult = new Object();
-        Callable<Object> task = mock(Callable.class);
-        when(task.call()).thenReturn(taskResult);
+        LegacyUnitOfWork.ProcessingContextCallable<Object> task = mock(LegacyUnitOfWork.ProcessingContextCallable.class);
+        when(task.call(any())).thenReturn(taskResult);
         ResultMessage result = subject.executeWithResult(task);
         InOrder inOrder = inOrder(task, subject);
         inOrder.verify(subject).start();
-        inOrder.verify(task).call();
+        inOrder.verify(task).call(any());
         inOrder.verify(subject).commit();
         assertFalse(subject.isActive());
-        assertSame(taskResult, result.getPayload());
+        assertSame(taskResult, result.payload());
         assertNotNull(subject.getExecutionResult());
-        assertSame(taskResult, subject.getExecutionResult().getResult().getPayload());
+        assertSame(taskResult, subject.getExecutionResult().getResult().payload());
     }
 
     @Test
     void executeTaskReturnsResultMessage() throws Exception {
-        ResultMessage<Object> resultMessage = asResultMessage(new Object());
-        Callable<ResultMessage<Object>> task = mock(Callable.class);
-        when(task.call()).thenReturn(resultMessage);
+        ResultMessage resultMessage = asResultMessage(new Object());
+        LegacyUnitOfWork.ProcessingContextCallable<ResultMessage> task = mock(LegacyUnitOfWork.ProcessingContextCallable.class);
+        when(task.call(any())).thenReturn(resultMessage);
         ResultMessage actualResultMessage = subject.executeWithResult(task);
         assertSame(resultMessage, actualResultMessage);
     }
@@ -176,7 +181,6 @@ class AbstractUnitOfWorkTest {
         subject.rollback();
         verify(transaction).rollback();
         verify(transaction, never()).commit();
-
     }
 
     @Test
@@ -195,16 +199,16 @@ class AbstractUnitOfWorkTest {
     @Test
     void whenGettingCorrelationMetaThrows_thenCatchExceptions() {
         subject.registerCorrelationDataProvider(new ThrowingCorrelationDataProvider());
-        MetaData correlationData = subject.getCorrelationData();
+        Metadata correlationData = subject.getCorrelationData();
         assertNotNull(correlationData);
     }
 
     private static class PhaseTransition {
 
-        private final UnitOfWork.Phase phase;
-        private final UnitOfWork<?> unitOfWork;
+        private final LegacyUnitOfWork.Phase phase;
+        private final LegacyUnitOfWork<?> unitOfWork;
 
-        public PhaseTransition(UnitOfWork<?> unitOfWork, UnitOfWork.Phase phase) {
+        public PhaseTransition(LegacyUnitOfWork<?> unitOfWork, LegacyUnitOfWork.Phase phase) {
             this.unitOfWork = unitOfWork;
             this.phase = phase;
         }

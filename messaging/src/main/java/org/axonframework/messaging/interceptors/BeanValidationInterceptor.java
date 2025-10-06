@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,31 +16,35 @@
 
 package org.axonframework.messaging.interceptors;
 
+import jakarta.annotation.Nonnull;
+import jakarta.annotation.Nullable;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Validation;
 import jakarta.validation.Validator;
 import jakarta.validation.ValidatorFactory;
-import org.axonframework.messaging.InterceptorChain;
 import org.axonframework.messaging.Message;
 import org.axonframework.messaging.MessageDispatchInterceptor;
+import org.axonframework.messaging.MessageDispatchInterceptorChain;
 import org.axonframework.messaging.MessageHandlerInterceptor;
-import org.axonframework.messaging.unitofwork.UnitOfWork;
+import org.axonframework.messaging.MessageHandlerInterceptorChain;
+import org.axonframework.messaging.MessageStream;
+import org.axonframework.messaging.unitofwork.ProcessingContext;
 
-import java.util.List;
 import java.util.Set;
-import java.util.function.BiFunction;
-import javax.annotation.Nonnull;
+import java.util.concurrent.CompletableFuture;
+import java.util.function.Function;
 
 /**
  * Interceptor that applies JSR303 bean validation on incoming {@link Message}s. When validation on a message fails, a
  * {@link JSR303ViolationException} is thrown, holding the constraint violations. This interceptor can either be used as
  * a {@link MessageHandlerInterceptor} or as a {@link MessageDispatchInterceptor}.
  *
+ * @param <M> The message type this interceptor can process.
  * @author Allard Buijze
- * @since 1.1
+ * @since 1.1.0
  */
-public class BeanValidationInterceptor<T extends Message<?>>
-        implements MessageHandlerInterceptor<T>, MessageDispatchInterceptor<T> {
+public class BeanValidationInterceptor<M extends Message>
+        implements MessageHandlerInterceptor<M>, MessageDispatchInterceptor<M> {
 
     private final ValidatorFactory validatorFactory;
 
@@ -62,24 +66,36 @@ public class BeanValidationInterceptor<T extends Message<?>>
         this.validatorFactory = validatorFactory;
     }
 
+    @Nonnull
     @Override
-    public Object handle(@Nonnull UnitOfWork<? extends T> unitOfWork, @Nonnull InterceptorChain interceptorChain)
-            throws Exception {
-        handle(unitOfWork.getMessage());
-        return interceptorChain.proceed();
+    public MessageStream<?> interceptOnDispatch(@Nonnull M message,
+                                                @Nullable ProcessingContext context,
+                                                @Nonnull MessageDispatchInterceptorChain<M> dispatchInterceptorChain) {
+        return interceptOrContinue(message, (m) -> dispatchInterceptorChain.proceed(m, context));
     }
 
-    @Override
     @Nonnull
-    public BiFunction<Integer, T, T> handle(@Nonnull List<? extends T> messages) {
-        return (index, message) -> {
-            Validator validator = validatorFactory.getValidator();
-            Set<ConstraintViolation<Object>> violations = validateMessage(message.getPayload(), validator);
-            if (violations != null && !violations.isEmpty()) {
-                throw new JSR303ViolationException(violations);
-            }
-            return message;
-        };
+    @Override
+    public MessageStream<?> interceptOnHandle(@Nonnull M message,
+                                              @Nonnull ProcessingContext context,
+                                              @Nonnull MessageHandlerInterceptorChain<M> handlerInterceptorChain) {
+        return interceptOrContinue(message, (m) -> handlerInterceptorChain.proceed(m, context));
+    }
+
+    @Nonnull
+    private MessageStream<?> interceptOrContinue(@Nonnull M message,
+                                                 @Nonnull Function<M, MessageStream<?>> continuation) {
+        Set<ConstraintViolation<Object>> violations = validate(message);
+        if (!violations.isEmpty()) {
+            return MessageStream.fromFuture(CompletableFuture.failedFuture(new JSR303ViolationException(violations)));
+        }
+        return continuation.apply(message);
+    }
+
+
+    private Set<ConstraintViolation<Object>> validate(Message message) {
+        Validator validator = validatorFactory.getValidator();
+        return validateMessage(message.payload(), validator);
     }
 
     /**

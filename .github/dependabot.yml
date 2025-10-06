@@ -10,9 +10,7 @@ updates:
   labels:
     - "Type: Dependency Upgrade"
     - "Priority 1: Must"
-  milestone: 105
-  reviewers:
-    - "AxonFramework/framework-developers"
+  milestone: 115
   groups:
     github-dependencies:
       update-types:
@@ -29,12 +27,13 @@ updates:
   labels:
     - "Type: Dependency Upgrade"
     - "Priority 1: Must"
-  milestone: 105
-  reviewers:
-    - "AxonFramework/framework-developers"
+  milestone: 115
   groups:
     maven-dependencies:
       update-types:
         - "patch"
         - "minor"
         - "major"
+  ignore:
+    - dependency-name: "com.github.kagkarlsson:db-scheduler"
+      versions: [ "[14.0.0,)" ] # TODO #3194 Remove ignore rule to auto-update to recent db-scheduler versions

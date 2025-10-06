@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,15 +16,12 @@
 
 package org.axonframework.queryhandling;
 
-import org.axonframework.commandhandling.CommandResultMessage;
-import org.axonframework.commandhandling.GenericCommandResultMessage;
+import jakarta.annotation.Nullable;
+import org.axonframework.common.ObjectUtils;
 import org.axonframework.messaging.GenericMessage;
-import org.axonframework.messaging.GenericResultMessage;
-import org.axonframework.messaging.MetaData;
+import org.axonframework.messaging.MessageTestSuite;
+import org.axonframework.messaging.MessageType;
 import org.junit.jupiter.api.*;
-
-import java.util.Collections;
-import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -33,102 +30,29 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * @author Milan Savic
  */
-class GenericSubscriptionQueryUpdateMessageTest {
+class GenericSubscriptionQueryUpdateMessageTest extends MessageTestSuite<SubscriptionQueryUpdateMessage> {
 
-    @Test
-    void messageCreation() {
-        String payload = "payload";
+    @Override
+    protected SubscriptionQueryUpdateMessage buildDefaultMessage() {
+        return new GenericSubscriptionQueryUpdateMessage(new GenericMessage(
+                TEST_IDENTIFIER, TEST_TYPE, TEST_PAYLOAD, TEST_PAYLOAD_TYPE, TEST_METADATA
+        ));
+    }
 
-        SubscriptionQueryUpdateMessage<Object> result = GenericSubscriptionQueryUpdateMessage.asUpdateMessage(payload);
-
-        assertEquals(payload, result.getPayload());
+    @Override
+    protected <P> SubscriptionQueryUpdateMessage buildMessage(@Nullable P payload) {
+        return new GenericSubscriptionQueryUpdateMessage(new MessageType(ObjectUtils.nullSafeTypeOf(payload)),
+                                                         payload);
     }
 
     @Test
     void messageCreationWithNullPayload() {
         String payload = null;
 
-        GenericSubscriptionQueryUpdateMessage<String> result =
-                new GenericSubscriptionQueryUpdateMessage<>(String.class, payload);
+        SubscriptionQueryUpdateMessage result = new GenericSubscriptionQueryUpdateMessage(
+                new MessageType("query"), payload, String.class
+        );
 
-        assertNull(result.getPayload());
-    }
-
-    @Test
-    void andMetaData() {
-        Map<String, String> metaData = Collections.singletonMap("k1", "v2");
-        SubscriptionQueryUpdateMessage<Object> original = new GenericSubscriptionQueryUpdateMessage<>(
-                new GenericMessage<>("payload", metaData));
-
-
-        Map<String, String> newMetaData = Collections.singletonMap("k2", "v3");
-        SubscriptionQueryUpdateMessage<Object> result = original.andMetaData(newMetaData);
-
-        assertEquals(original.getPayload(), result.getPayload());
-        MetaData expectedMetaData = MetaData.from(metaData)
-                                            .mergedWith(newMetaData);
-        assertEquals(expectedMetaData, result.getMetaData());
-    }
-
-    @Test
-    void withMetaData() {
-        Map<String, String> metaData = Collections.singletonMap("k1", "v2");
-        SubscriptionQueryUpdateMessage<Object> original = new GenericSubscriptionQueryUpdateMessage<>(
-                new GenericMessage<>("payload", metaData));
-
-
-        Map<String, String> newMetaData = Collections.singletonMap("k2", "v3");
-        SubscriptionQueryUpdateMessage<Object> result = original.withMetaData(newMetaData);
-
-        assertEquals(original.getPayload(), result.getPayload());
-        assertEquals(newMetaData, result.getMetaData());
-    }
-
-    @Test
-    void messageCreationBasedOnExistingMessage() {
-        GenericSubscriptionQueryUpdateMessage<String> original = new GenericSubscriptionQueryUpdateMessage<>("payload");
-
-        SubscriptionQueryUpdateMessage<Object> result = GenericSubscriptionQueryUpdateMessage.asUpdateMessage(original);
-
-        assertEquals(result, original);
-    }
-
-    @Test
-    void messageCreationBasedOnResultMessage() {
-        Map<String, String> metaData = Collections.singletonMap("k1", "v1");
-        CommandResultMessage<String> resultMessage = GenericCommandResultMessage.asCommandResultMessage(
-                new GenericResultMessage<>("result", metaData));
-
-        SubscriptionQueryUpdateMessage<Object> result = GenericSubscriptionQueryUpdateMessage.asUpdateMessage(
-                resultMessage);
-
-        assertEquals(result.getPayload(), resultMessage.getPayload());
-        assertEquals(result.getMetaData(), resultMessage.getMetaData());
-    }
-
-    @Test
-    void messageCreationBasedOnExceptionalResultMessage() {
-        Map<String, String> metaData = Collections.singletonMap("k1", "v1");
-        RuntimeException exception = new RuntimeException();
-        CommandResultMessage<String> resultMessage = GenericCommandResultMessage.asCommandResultMessage(
-                new GenericResultMessage<>(exception, metaData));
-
-        SubscriptionQueryUpdateMessage<Object> result = GenericSubscriptionQueryUpdateMessage.asUpdateMessage(
-                resultMessage);
-
-        assertEquals(result.getMetaData(), resultMessage.getMetaData());
-        assertTrue(result.isExceptional());
-        assertEquals(exception, result.exceptionResult());
-    }
-
-    @Test
-    void messageCreationBasedOnAnyMessage() {
-        Map<String, String> metaData = Collections.singletonMap("k1", "v1");
-        GenericMessage<String> message = new GenericMessage<>("payload", metaData);
-
-        SubscriptionQueryUpdateMessage<Object> result = GenericSubscriptionQueryUpdateMessage.asUpdateMessage(message);
-
-        assertEquals(result.getPayload(), message.getPayload());
-        assertEquals(result.getMetaData(), message.getMetaData());
+        assertNull(result.payload());
     }
 }

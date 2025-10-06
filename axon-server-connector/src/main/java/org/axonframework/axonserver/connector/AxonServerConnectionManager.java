@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2024. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,16 +18,14 @@ package org.axonframework.axonserver.connector;
 
 import io.axoniq.axonserver.connector.AxonServerConnection;
 import io.axoniq.axonserver.connector.AxonServerConnectionFactory;
-import io.axoniq.axonserver.connector.impl.ContextConnection;
 import io.axoniq.axonserver.connector.impl.ServerAddress;
 import io.axoniq.axonserver.grpc.control.NodeInfo;
 import io.grpc.Channel;
 import io.grpc.ManagedChannelBuilder;
 import io.grpc.netty.shaded.io.grpc.netty.GrpcSslContexts;
+import org.axonframework.axonserver.connector.util.GrpcMessageSizeInterceptor;
 import org.axonframework.common.AxonConfigurationException;
 import org.axonframework.common.ObjectUtils;
-import org.axonframework.config.TagsConfiguration;
-import org.axonframework.lifecycle.Lifecycle;
 import org.axonframework.lifecycle.Phase;
 
 import java.io.File;
@@ -36,10 +34,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 import java.util.stream.Collectors;
-import javax.annotation.Nonnull;
 import javax.net.ssl.SSLException;
 
 import static org.axonframework.common.BuilderUtils.assertNonEmpty;
@@ -50,11 +46,12 @@ import static org.axonframework.common.BuilderUtils.assertNonNull;
  * so by creating {@link Channel}s per context and providing them as the means to dispatch/receive messages.
  *
  * @author Marc Gathier
- * @since 4.0
+ * @since 4.0.0
  */
-public class AxonServerConnectionManager implements Lifecycle, ConnectionManager {
+public class AxonServerConnectionManager implements ConnectionManager {
 
     private static final int DEFAULT_GRPC_PORT = 8124;
+    private static final int DEFAULT_MAX_MESSAGE_SIZE = 4194304;
 
     private final Map<String, AxonServerConnection> connections = new ConcurrentHashMap<>();
     private final AxonServerConnectionFactory connectionFactory;
@@ -64,10 +61,10 @@ public class AxonServerConnectionManager implements Lifecycle, ConnectionManager
     private final long heartbeatTimeout;
 
     /**
-     * Instantiate a {@link AxonServerConnectionManager} based on the fields contained in the {@link Builder}, using the
+     * Instantiate a {@code AxonServerConnectionManager} based on the fields contained in the {@link Builder}, using the
      * given {@code connectionFactory} to obtain connections to AxonServer.
      *
-     * @param builder           the {@link Builder} used to instantiate a {@link AxonServerConnectionManager} instance
+     * @param builder           the {@link Builder} used to instantiate a {@code AxonServerConnectionManager} instance
      * @param connectionFactory a configured instance of the AxonServerConnectionFactory
      */
     protected AxonServerConnectionManager(Builder builder, AxonServerConnectionFactory connectionFactory) {
@@ -81,26 +78,20 @@ public class AxonServerConnectionManager implements Lifecycle, ConnectionManager
     }
 
     /**
-     * Instantiate a Builder to be able to create an {@link AxonServerConnectionManager}.
+     * Instantiate a Builder to be able to create an {@code AxonServerConnectionManager}.
      * <p>
      * The {@link Builder#routingServers(String) routingServers} default to {@code "localhost:8024"} and the
      * {@link TagsConfiguration} is defaulted to {@link TagsConfiguration#TagsConfiguration()}. The
      * {@link AxonServerConfiguration} is a <b>hard requirements</b> and as such should be provided.
      *
-     * @return a Builder to be able to create a {@link AxonServerConnectionManager}
+     * @return a Builder to be able to create a {@code AxonServerConnectionManager}
      */
     public static Builder builder() {
         return new Builder();
     }
 
-    @Override
-    public void registerLifecycleHandlers(@Nonnull LifecycleRegistry lifecycle) {
-        lifecycle.onStart(Phase.INSTRUCTION_COMPONENTS, this::start);
-        lifecycle.onShutdown(Phase.EXTERNAL_CONNECTIONS, this::shutdown);
-    }
-
     /**
-     * Starts the {@link AxonServerConnectionManager}. Will enable heartbeat messages to be send to the connected Axon
+     * Starts the {@code AxonServerConnectionManager}. Will enable heartbeat messages to be sent to the connected Axon
      * Server instance in the {@link Phase#INSTRUCTION_COMPONENTS} phase, if this has been enabled through the
      * {@link AxonServerConfiguration.HeartbeatConfiguration#isEnabled()}.
      */
@@ -192,16 +183,6 @@ public class AxonServerConnectionManager implements Lifecycle, ConnectionManager
         return defaultContext;
     }
 
-    @Deprecated
-    public Channel getChannel() {
-        return ((ContextConnection) getConnection(defaultContext)).getManagedChannel();
-    }
-
-    @Deprecated
-    public Channel getChannel(String context) {
-        return ((ContextConnection) getConnection(context)).getManagedChannel();
-    }
-
     @Override
     public Map<String, Boolean> connections() {
         return connections.entrySet()
@@ -285,19 +266,6 @@ public class AxonServerConnectionManager implements Lifecycle, ConnectionManager
         }
 
         /**
-         * Sets the Axon Framework version resolver used in order to communicate the client version to send to Axon
-         * Server.
-         *
-         * @param axonFrameworkVersionResolver a string supplier that retrieve the current Axon Framework version
-         * @return the current Builder instance, for fluent interfacing
-         * @deprecated Not ued anymore
-         */
-        @Deprecated
-        public Builder axonFrameworkVersionResolver(Supplier<String> axonFrameworkVersionResolver) {
-            return this;
-        }
-
-        /**
          * Initializes a {@link AxonServerConnectionManager} as specified through this Builder.
          *
          * @return a {@link AxonServerConnectionManager} as specified through this Builder
@@ -350,6 +318,13 @@ public class AxonServerConnectionManager implements Lifecycle, ConnectionManager
             if (axonServerConfiguration.getMaxMessageSize() > 0) {
                 builder.maxInboundMessageSize(axonServerConfiguration.getMaxMessageSize());
             }
+            builder.customize(managedChannelBuilder -> managedChannelBuilder.intercept(new GrpcMessageSizeInterceptor(
+                    axonServerConfiguration.getMaxMessageSize() > 0
+                            ? axonServerConfiguration.getMaxMessageSize()
+                            : DEFAULT_MAX_MESSAGE_SIZE,
+                    axonServerConfiguration.getMaxMessageSizeWarningThreshold()
+            )));
+
             if (axonServerConfiguration.getKeepAliveTime() > 0) {
                 builder.usingKeepAlive(axonServerConfiguration.getKeepAliveTime(),
                                        axonServerConfiguration.getKeepAliveTimeout(),

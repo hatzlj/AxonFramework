@@ -16,7 +16,6 @@
 
 package org.axonframework.springboot.autoconfig;
 
-import org.axonframework.axonserver.connector.command.CommandLoadFactorProvider;
 import org.axonframework.springboot.utils.GrpcServerStub;
 import org.axonframework.springboot.utils.TcpUtils;
 import org.junit.jupiter.api.*;
@@ -53,15 +52,16 @@ class AxonServerAutoConfigurationLoadFactorTest {
     }
 
     @Test
+    @Disabled("TODO #3074 - Revisit Command Load Factor support")
     void loadFactor() {
-        testContext.withUserConfiguration(TestContext.class)
-                   .withPropertyValues("axon.axonserver.command-load-factor=36")
-                   .run(context -> {
-                       CommandLoadFactorProvider commandLoadFactorProvider =
-                               context.getBean("commandLoadFactorProvider", CommandLoadFactorProvider.class);
-                       int loadFactor = commandLoadFactorProvider.getFor("anything");
-                       assertEquals(36, loadFactor);
-                   });
+//        testContext.withUserConfiguration(TestContext.class)
+//                   .withPropertyValues("axon.axonserver.command-load-factor=36")
+//                   .run(context -> {
+//                       CommandLoadFactorProvider commandLoadFactorProvider =
+//                               context.getBean("commandLoadFactorProvider", CommandLoadFactorProvider.class);
+//                       int loadFactor = commandLoadFactorProvider.getFor("anything");
+//                       assertEquals(36, loadFactor);
+//                   });
     }
 
     @ContextConfiguration

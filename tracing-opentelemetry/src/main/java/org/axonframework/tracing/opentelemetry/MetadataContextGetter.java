@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,20 +19,20 @@ package org.axonframework.tracing.opentelemetry;
 import io.opentelemetry.context.propagation.TextMapGetter;
 import org.axonframework.messaging.Message;
 
-import javax.annotation.Nonnull;
+import jakarta.annotation.Nonnull;
 
 /**
  * This {@link TextMapGetter} implementation is able to extract the parent OpenTelemetry span context from a
  * {@link Message}.
  * <p>
- * The trace parent is part of the message's {@link org.axonframework.messaging.MetaData}, if it was set when
+ * The trace parent is part of the message's {@link org.axonframework.messaging.Metadata}, if it was set when
  * dispatching by the {@link MetadataContextSetter}. This is done using the
  * {@link org.axonframework.tracing.SpanFactory#propagateContext(Message)} method for the message.
  *
  * @author Mitchell Herrijgers
  * @since 4.6.0
  */
-public class MetadataContextGetter implements TextMapGetter<Message<?>> {
+public class MetadataContextGetter implements TextMapGetter<Message> {
 
     /**
      * Singleton instance of the {@link MetadataContextGetter}, used by the {@link OpenTelemetrySpanFactory}.
@@ -44,15 +44,15 @@ public class MetadataContextGetter implements TextMapGetter<Message<?>> {
     }
 
     @Override
-    public Iterable<String> keys(Message<?> message) {
-        return message.getMetaData().keySet();
+    public Iterable<String> keys(Message message) {
+        return message.metadata().keySet();
     }
 
     @Override
-    public String get(Message<?> message, @Nonnull String key) {
+    public String get(Message message, @Nonnull String key) {
         if (message == null) {
             return null;
         }
-        return (String) message.getMetaData().get(key);
+        return (String) message.metadata().get(key);
     }
 }

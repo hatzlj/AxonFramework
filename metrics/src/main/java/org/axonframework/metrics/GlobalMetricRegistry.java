@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2020. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,10 +19,9 @@ package org.axonframework.metrics;
 import com.codahale.metrics.MetricRegistry;
 import org.axonframework.commandhandling.CommandBus;
 import org.axonframework.commandhandling.CommandMessage;
-import org.axonframework.config.Configurer;
 import org.axonframework.eventhandling.EventBus;
 import org.axonframework.eventhandling.EventMessage;
-import org.axonframework.eventhandling.EventProcessor;
+import org.axonframework.eventhandling.processors.EventProcessor;
 import org.axonframework.messaging.Message;
 import org.axonframework.monitoring.MessageMonitor;
 import org.axonframework.monitoring.MultiMessageMonitor;
@@ -37,13 +36,12 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Function;
 
 /**
  * Registry for application metrics with convenient ways to register Axon components.
  *
  * @author Rene de Waele
- * @since 3.0
+ * @since 3.0.0
  */
 public class GlobalMetricRegistry {
 
@@ -68,23 +66,6 @@ public class GlobalMetricRegistry {
     }
 
     /**
-     * Registers the configured {@link MetricRegistry} with the given {@code configurer} via {@link
-     * Configurer#configureMessageMonitor(Function)}. Components registered by the {@link Configurer} will be added by
-     * invocation of {@link #registerComponent(Class, String)}.
-     *
-     * @param configurer the application's {@link Configurer}
-     * @return the {@link Configurer}, with the new registration applied, for chaining
-     */
-    @SuppressWarnings("unchecked")
-    public Configurer registerWithConfigurer(Configurer configurer) {
-        return configurer.configureMessageMonitor(
-                configuration
-                        -> (componentType, componentName)
-                        -> (MessageMonitor<Message<?>>) registerComponent(componentType, componentName)
-        );
-    }
-
-    /**
      * Registers new metrics to the {@link MetricRegistry} to monitor a component of given {@code componentType}. The
      * monitor will be registered with the registry under the given {@code componentName}. The returned {@link
      * MessageMonitor} can be installed on the component to initiate the monitoring.
@@ -93,7 +74,7 @@ public class GlobalMetricRegistry {
      * @param componentName the name under which the component should be registered to the registry
      * @return a {@link MessageMonitor} to monitor the behavior of the given {@code componentType}
      */
-    public MessageMonitor<? extends Message<?>> registerComponent(Class<?> componentType, String componentName) {
+    public MessageMonitor<? extends Message> registerComponent(Class<?> componentType, String componentName) {
         if (EventProcessor.class.isAssignableFrom(componentType)) {
             return registerEventProcessor(componentName);
         }
@@ -122,8 +103,8 @@ public class GlobalMetricRegistry {
      * @param eventProcessorName the name under which the {@link EventProcessor} should be registered to the registry
      * @return a {@link MessageMonitor} to monitor the behavior of an {@link EventProcessor}
      */
-    public MessageMonitor<? super EventMessage<?>> registerEventProcessor(String eventProcessorName) {
-        MessageTimerMonitor messageTimerMonitor = new MessageTimerMonitor();
+    public MessageMonitor<? super EventMessage> registerEventProcessor(String eventProcessorName) {
+        MessageTimerMonitor messageTimerMonitor = MessageTimerMonitor.builder().build();
         EventProcessorLatencyMonitor eventProcessorLatencyMonitor = new EventProcessorLatencyMonitor();
         CapacityMonitor capacityMonitor = new CapacityMonitor(1, TimeUnit.MINUTES);
         MessageCountingMonitor messageCountingMonitor = new MessageCountingMonitor();
@@ -135,7 +116,7 @@ public class GlobalMetricRegistry {
         eventProcessingRegistry.register("capacity", capacityMonitor);
         registry.register(eventProcessorName, eventProcessingRegistry);
 
-        List<MessageMonitor<? super EventMessage<?>>> monitors = new ArrayList<>();
+        List<MessageMonitor<? super EventMessage>> monitors = new ArrayList<>();
         monitors.add(messageTimerMonitor);
         monitors.add(eventProcessorLatencyMonitor);
         monitors.add(capacityMonitor);
@@ -151,7 +132,7 @@ public class GlobalMetricRegistry {
      * @param commandBusName the name under which the commandBus should be registered to the registry
      * @return a {@link MessageMonitor} to monitor the behavior of a CommandBus
      */
-    public MessageMonitor<? super CommandMessage<?>> registerCommandBus(String commandBusName) {
+    public MessageMonitor<? super CommandMessage> registerCommandBus(String commandBusName) {
         return registerDefaultHandlerMessageMonitor(commandBusName);
     }
 
@@ -163,9 +144,9 @@ public class GlobalMetricRegistry {
      * @param eventBusName the name under which the {@link EventBus} should be registered to the registry
      * @return a {@link MessageMonitor} to monitor the behavior of an {@link EventBus}
      */
-    public MessageMonitor<? super EventMessage<?>> registerEventBus(String eventBusName) {
+    public MessageMonitor<? super EventMessage> registerEventBus(String eventBusName) {
         MessageCountingMonitor messageCounterMonitor = new MessageCountingMonitor();
-        MessageTimerMonitor messageTimerMonitor = new MessageTimerMonitor();
+        MessageTimerMonitor messageTimerMonitor = MessageTimerMonitor.builder().build();
 
         MetricRegistry eventProcessingRegistry = new MetricRegistry();
         eventProcessingRegistry.register("messageCounter", messageCounterMonitor);
@@ -183,7 +164,7 @@ public class GlobalMetricRegistry {
      * @param queryBusName the name under which the {@link QueryBus} should be registered to the registry
      * @return a {@link MessageMonitor} to monitor the behavior of a {@link QueryBus}
      */
-    public MessageMonitor<? super QueryMessage<?, ?>> registerQueryBus(String queryBusName) {
+    public MessageMonitor<? super QueryMessage> registerQueryBus(String queryBusName) {
         return registerDefaultHandlerMessageMonitor(queryBusName);
     }
 
@@ -196,12 +177,12 @@ public class GlobalMetricRegistry {
      *                          registry
      * @return a {@link MessageMonitor} to monitor the behavior of a {@link QueryUpdateEmitter}
      */
-    private MessageMonitor<? extends Message<?>> registerQueryUpdateEmitter(String updateEmitterName) {
+    private MessageMonitor<? extends Message> registerQueryUpdateEmitter(String updateEmitterName) {
         return registerDefaultHandlerMessageMonitor(updateEmitterName);
     }
 
-    private MessageMonitor<Message<?>> registerDefaultHandlerMessageMonitor(String name) {
-        MessageTimerMonitor messageTimerMonitor = new MessageTimerMonitor();
+    private MessageMonitor<Message> registerDefaultHandlerMessageMonitor(String name) {
+        MessageTimerMonitor messageTimerMonitor = MessageTimerMonitor.builder().build();
         CapacityMonitor capacityMonitor = new CapacityMonitor(1, TimeUnit.MINUTES);
         MessageCountingMonitor messageCountingMonitor = new MessageCountingMonitor();
 

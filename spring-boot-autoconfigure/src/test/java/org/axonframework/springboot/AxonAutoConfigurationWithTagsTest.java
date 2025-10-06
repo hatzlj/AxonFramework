@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2023. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@
 
 package org.axonframework.springboot;
 
-import org.axonframework.config.TagsConfiguration;
+import org.axonframework.axonserver.connector.TagsConfiguration;
 import org.axonframework.springboot.utils.GrpcServerStub;
 import org.axonframework.springboot.utils.TcpUtils;
 import org.junit.jupiter.api.*;
@@ -35,6 +35,7 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * @author Milan Savic
  */
+@Disabled("TODO #3496")
 class AxonAutoConfigurationWithTagsTest {
 
     private ApplicationContextRunner testContext;

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,215 +16,129 @@
 
 package org.axonframework.commandhandling.gateway;
 
+import jakarta.annotation.Nonnull;
+import jakarta.annotation.Nullable;
 import org.axonframework.commandhandling.CommandBus;
-import org.axonframework.commandhandling.CommandCallback;
-import org.axonframework.commandhandling.CommandExecutionException;
 import org.axonframework.commandhandling.CommandMessage;
-import org.axonframework.commandhandling.CommandResultMessage;
-import org.axonframework.commandhandling.GenericCommandResultMessage;
-import org.axonframework.commandhandling.callbacks.FailureLoggingCallback;
-import org.axonframework.commandhandling.callbacks.FutureCallback;
-import org.axonframework.common.AxonConfigurationException;
-import org.axonframework.common.Registration;
-import org.axonframework.messaging.MessageDispatchInterceptor;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.axonframework.commandhandling.CommandPriorityCalculator;
+import org.axonframework.commandhandling.GenericCommandMessage;
+import org.axonframework.commandhandling.RoutingStrategy;
+import org.axonframework.common.infra.ComponentDescriptor;
+import org.axonframework.messaging.Message;
+import org.axonframework.messaging.MessageTypeResolver;
+import org.axonframework.messaging.Metadata;
+import org.axonframework.messaging.ResultMessage;
+import org.axonframework.messaging.unitofwork.ProcessingContext;
 
-import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
-import javax.annotation.Nonnull;
 
-import static org.axonframework.common.BuilderUtils.assertNonNull;
+import static java.util.Objects.requireNonNull;
 
 /**
- * Default implementation of the CommandGateway interface. It allow configuration of a {@link RetryScheduler} and
- * {@link MessageDispatchInterceptor CommandDispatchInterceptors}. The Retry Scheduler allows for Command to be
- * automatically retried when a non-transient exception occurs. The Command Dispatch Interceptors can intercept and
- * alter command dispatched on this specific gateway. Typically, this would be used to add gateway specific meta data
- * to the Command.
+ * Default implementation of the {@link CommandGateway} interface.
  *
  * @author Allard Buijze
- * @since 2.0
+ * @since 2.0.0
  */
-public class DefaultCommandGateway extends AbstractCommandGateway implements CommandGateway {
-    private static final Logger logger = LoggerFactory.getLogger(DefaultCommandGateway.class);
+public class DefaultCommandGateway implements CommandGateway {
 
-    private final CommandCallback<Object, Object> commandCallback;
+    private final CommandBus commandBus;
+    private final MessageTypeResolver messageTypeResolver;
+    private final CommandPriorityCalculator priorityCalculator;
+    private final RoutingStrategy routingKeyResolver;
 
     /**
-     * Instantiate a {@link DefaultCommandGateway} based on the fields contained in the {@link Builder}.
+     * Initialize the {@code DefaultCommandGateway} to send commands through given {@code commandBus}.
      * <p>
-     * Will assert that the {@link CommandBus} is not {@code null} and will throw an {@link AxonConfigurationException}
-     * if this is the case.
+     * The {@link org.axonframework.messaging.QualifiedName names} for
+     * {@link org.axonframework.commandhandling.CommandMessage CommandMessages} are resolved through the given
+     * {@code nameResolver}.
      *
-     * @param builder the {@link DefaultCommandGateway.Builder} used to instantiate a {@link DefaultCommandGateway}
-     *                instance
+     * @param commandBus          The {@link CommandBus} to send commands on.
+     * @param messageTypeResolver The {@link MessageTypeResolver} resolving the
+     *                            {@link org.axonframework.messaging.QualifiedName names} for
+     *                            {@link org.axonframework.commandhandling.CommandMessage CommandMessages} being
+     *                            dispatched on the {@code commandBus}.
+     * @param priorityCalculator  The {@link CommandPriorityCalculator} determining the priority of commands.
+     * @param routingKeyResolver  The {@link RoutingStrategy} determining the routing key for commands.
      */
-    protected DefaultCommandGateway(Builder builder) {
-        super(builder);
-        this.commandCallback = builder.commandCallback;
+    public DefaultCommandGateway(@Nonnull CommandBus commandBus,
+                                 @Nonnull MessageTypeResolver messageTypeResolver,
+                                 @Nonnull CommandPriorityCalculator priorityCalculator,
+                                 @Nonnull RoutingStrategy routingKeyResolver) {
+        this.commandBus = requireNonNull(commandBus, "The commandBus may not be null.");
+        this.messageTypeResolver = requireNonNull(messageTypeResolver, "The messageTypeResolver may not be null.");
+        this.priorityCalculator = requireNonNull(priorityCalculator, "The CommandPriorityCalculator may not be null.");
+        this.routingKeyResolver = requireNonNull(routingKeyResolver, "The RoutingStrategy may not be null.");
+    }
+
+    @Override
+    public CommandResult send(@Nonnull Object command,
+                              @Nullable ProcessingContext context) {
+        CommandMessage commandMessage = asCommandMessage(command, Metadata.emptyInstance());
+        return new FutureCommandResult(
+                commandBus.dispatch(commandMessage, context)
+                          .thenCompose(
+                                  msg -> msg instanceof ResultMessage resultMessage && resultMessage.isExceptional()
+                                          ? CompletableFuture.failedFuture(resultMessage.exceptionResult())
+                                          : CompletableFuture.completedFuture(msg)
+                          )
+        );
+    }
+
+    @Override
+    public CommandResult send(@Nonnull Object command,
+                              @Nonnull Metadata metadata,
+                              @Nullable ProcessingContext context) {
+        CommandMessage commandMessage = asCommandMessage(command, metadata);
+        return new FutureCommandResult(
+                commandBus.dispatch(commandMessage, context)
+                          .thenCompose(
+                                  msg -> msg instanceof ResultMessage resultMessage && resultMessage.isExceptional()
+                                          ? CompletableFuture.failedFuture(resultMessage.exceptionResult())
+                                          : CompletableFuture.completedFuture(msg)
+                          )
+        );
     }
 
     /**
-     * Instantiate a Builder to be able to create a {@link DefaultCommandGateway}.
+     * Returns the given command as a {@link CommandMessage}.
      * <p>
-     * The {@code dispatchInterceptors} are defaulted to an empty list.
-     * The {@link CommandBus} is a <b>hard requirement</b> and as such should be provided.
+     * If {@code command} already implements {@code CommandMessage}, it is returned as-is. When the {@code command} is
+     * another implementation of {@link Message}, the {@link Message#payload()} and {@link Message#metadata()} are used
+     * as input for a new {@link GenericCommandMessage}. Otherwise, the given {@code command} is wrapped into a
+     * {@code GenericCommandMessage} as its payload.
+     * <p>
+     * When {@link CommandMessage#routingKey()} or {@link CommandMessage#priority()} are {@link Optional#empty() empty},
+     * the configured {@link CommandPriorityCalculator} and {@link RoutingStrategy} will be invoked.
      *
-     * @return a Builder to be able to create a {@link DefaultCommandGateway}
+     * @param command The command to wrap as {@link CommandMessage}.
+     * @return A {@link CommandMessage} containing given {@code command} as payload, a {@code command} if it already
+     * implements {@code CommandMessage}, or a {@code CommandMessage} based on the result of {@link Message#payload()}
+     * and {@link Message#metadata()} for other {@link Message} implementations.
      */
-    public static Builder builder() {
-        return new Builder();
-    }
-
-    @Override
-    public <C, R> void send(@Nonnull C command, @Nonnull CommandCallback<? super C, ? super R> callback) {
-        super.send(command, callback);
-    }
-
-    /**
-     * Sends the given {@code command} and waits for its execution to complete, or until the waiting thread is
-     * interrupted.
-     *
-     * @param command The command to send
-     * @param <R>     The expected type of return value
-     * @return The result of the command handler execution
-     * @throws org.axonframework.commandhandling.CommandExecutionException when command execution threw a checked
-     *                                                                     exception
-     */
-    @Override
-    @SuppressWarnings("unchecked")
-    public <R> R sendAndWait(@Nonnull Object command) {
-        FutureCallback<Object, R> futureCallback = new FutureCallback<>();
-        send(command, futureCallback);
-        CommandResultMessage<? extends R> commandResultMessage = futureCallback.getResult();
-        if (commandResultMessage.isExceptional()) {
-            throw asRuntime(commandResultMessage.exceptionResult());
-        }
-        return commandResultMessage.getPayload();
-    }
-
-    /**
-     * Sends the given {@code command} and waits for its execution to complete, or until the given
-     * {@code timeout} has expired, or the waiting thread is interrupted.
-     * <p/>
-     * When the timeout occurs, or the thread is interrupted, this method returns {@code null}.
-     *
-     * @param command The command to send
-     * @param timeout The maximum time to wait
-     * @param unit    The time unit of the timeout argument
-     * @param <R>     The expected type of return value
-     * @return The result of the command handler execution
-     * @throws org.axonframework.commandhandling.CommandExecutionException when command execution threw a checked
-     *                                                                     exception
-     */
-    @Override
-    @SuppressWarnings("unchecked")
-    public <R> R sendAndWait(@Nonnull Object command, long timeout, @Nonnull TimeUnit unit) {
-        FutureCallback<Object, R> futureCallback = new FutureCallback<>();
-        send(command, futureCallback);
-        CommandResultMessage<? extends R> commandResultMessage = futureCallback.getResult(timeout, unit);
-        if (commandResultMessage.isExceptional()) {
-            throw asRuntime(commandResultMessage.exceptionResult());
-        }
-        return commandResultMessage.getPayload();
-    }
-
-    @SuppressWarnings("unchecked") // Cast for commandCallback wrap
-    @Override
-    public <R> CompletableFuture<R> send(@Nonnull Object command) {
-        FutureCallback<Object, R> callback = new FutureCallback<>();
-        send(command, callback.wrap((CommandCallback<Object, R>) commandCallback));
-        CompletableFuture<R> result = new CompletableFuture<>();
-        callback.exceptionally(GenericCommandResultMessage::asCommandResultMessage)
-                .thenAccept(r -> {
-                    try {
-                        if (r.isExceptional()) {
-                            result.completeExceptionally(r.exceptionResult());
-                        } else {
-                            result.complete(r.getPayload());
-                        }
-                    } catch (Exception e) {
-                        result.completeExceptionally(e);
-                    }
-                });
-        return result;
-    }
-
-    @Override
-    public @Nonnull
-    Registration registerDispatchInterceptor(
-            @Nonnull MessageDispatchInterceptor<? super CommandMessage<?>> dispatchInterceptor) {
-        return super.registerDispatchInterceptor(dispatchInterceptor);
-    }
-
-    private RuntimeException asRuntime(Throwable e) {
-        if (e instanceof Error) {
-            throw (Error) e;
-        } else if (e instanceof RuntimeException) {
-            return (RuntimeException) e;
+    private CommandMessage asCommandMessage(Object command, Metadata metadata) {
+        CommandMessage commandMessage;
+        if (command instanceof CommandMessage) {
+            commandMessage = (CommandMessage) command;
         } else {
-            return new CommandExecutionException("An exception occurred while executing a command", e);
+            commandMessage = command instanceof Message message
+                    ? new GenericCommandMessage(message.type(), message.payload(), message.metadata())
+                    : new GenericCommandMessage(messageTypeResolver.resolveOrThrow(command), command, metadata);
         }
+        return new GenericCommandMessage(
+                commandMessage,
+                commandMessage.routingKey().orElse(routingKeyResolver.getRoutingKey(commandMessage)),
+                commandMessage.priority().orElse(priorityCalculator.determinePriority(commandMessage))
+        );
     }
 
-    /**
-     * Builder class to instantiate a {@link DefaultCommandGateway}.
-     * <p>
-     * The {@code dispatchInterceptors} are defaulted to an empty list.
-     * The {@link CommandBus} is a <b>hard requirements</b> and as such should be provided.
-     */
-    public static class Builder extends AbstractCommandGateway.Builder {
-        private CommandCallback<Object, Object> commandCallback = new FailureLoggingCallback<>(logger);
-
-        @Override
-        public Builder commandBus(@Nonnull CommandBus commandBus) {
-            super.commandBus(commandBus);
-            return this;
-        }
-
-        /**
-         * Set a {@link CommandCallback} on the command bus. This will be used as callback for all asynchronous
-         * commands that are sent.
-         * By default, the {@link FailureLoggingCallback} is used. This will log to the default logger on failure.
-         *
-         * @param commandCallback The {@link CommandCallback} to use for asynchronous commands
-         * @return the current Builder instance, for fluent interfacing
-         */
-        public Builder commandCallback(CommandCallback<Object, Object> commandCallback) {
-            assertNonNull(commandCallback, "CommandCallback may not be null");
-            this.commandCallback = commandCallback;
-            return this;
-        }
-
-        @Override
-        public Builder retryScheduler(@Nonnull RetryScheduler retryScheduler) {
-            super.retryScheduler(retryScheduler);
-            return this;
-        }
-
-        @Override
-        public Builder dispatchInterceptors(
-                MessageDispatchInterceptor<? super CommandMessage<?>>... dispatchInterceptors) {
-            super.dispatchInterceptors(dispatchInterceptors);
-            return this;
-        }
-
-        @Override
-        public Builder dispatchInterceptors(
-                List<MessageDispatchInterceptor<? super CommandMessage<?>>> dispatchInterceptors) {
-            super.dispatchInterceptors(dispatchInterceptors);
-            return this;
-        }
-
-        /**
-         * Initializes a {@link DefaultCommandGateway} as specified through this Builder.
-         *
-         * @return a {@link DefaultCommandGateway} as specified through this Builder
-         */
-        public DefaultCommandGateway build() {
-            return new DefaultCommandGateway(this);
-        }
+    @Override
+    public void describeTo(@Nonnull ComponentDescriptor descriptor) {
+        descriptor.describeProperty("commandBus", commandBus);
+        descriptor.describeProperty("messageTypeResolver", messageTypeResolver);
+        descriptor.describeProperty("priorityCalculator", priorityCalculator);
+        descriptor.describeProperty("routingKeyResolver", routingKeyResolver);
     }
 }

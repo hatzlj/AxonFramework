@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,15 +16,15 @@
 
 package org.axonframework.commandhandling;
 
+import jakarta.annotation.Nullable;
+import org.axonframework.common.ObjectUtils;
 import org.axonframework.messaging.GenericMessage;
 import org.axonframework.messaging.Message;
-import org.axonframework.messaging.MetaData;
+import org.axonframework.messaging.MessageTestSuite;
+import org.axonframework.messaging.MessageType;
+import org.axonframework.messaging.Metadata;
 import org.junit.jupiter.api.*;
 
-import java.util.Collections;
-import java.util.Map;
-
-import static org.axonframework.commandhandling.GenericCommandMessage.asCommandMessage;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -32,112 +32,32 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * @author Allard Buijze
  */
-class GenericCommandMessageTest {
+class GenericCommandMessageTest extends MessageTestSuite<CommandMessage> {
 
-    @Test
-    void constructor() {
-        Object payload = new Object();
-        CommandMessage<Object> message1 = asCommandMessage(payload);
-        Map<String, Object> metaDataMap = Collections.singletonMap("key", "value");
-        MetaData metaData = MetaData.from(metaDataMap);
-        GenericCommandMessage<Object> message2 = new GenericCommandMessage<>(payload, metaData);
-        GenericCommandMessage<Object> message3 = new GenericCommandMessage<>(payload, metaDataMap);
+    @Override
+    protected CommandMessage buildDefaultMessage() {
+        Message delegate =
+                new GenericMessage(TEST_IDENTIFIER, TEST_TYPE, TEST_PAYLOAD, TEST_PAYLOAD_TYPE, TEST_METADATA);
+        return new GenericCommandMessage(delegate);
+    }
 
-        assertSame(MetaData.emptyInstance(), message1.getMetaData());
-        assertEquals(Object.class, message1.getPayload().getClass());
-        assertEquals(Object.class, message1.getPayloadType());
-
-        assertSame(metaData, message2.getMetaData());
-        assertEquals(Object.class, message2.getPayload().getClass());
-        assertEquals(Object.class, message2.getPayloadType());
-
-        assertNotSame(metaDataMap, message3.getMetaData());
-        assertEquals(metaDataMap, message3.getMetaData());
-        assertEquals(Object.class, message3.getPayload().getClass());
-        assertEquals(Object.class, message3.getPayloadType());
-
-        assertNotEquals(message1.getIdentifier(), message2.getIdentifier());
-        assertNotEquals(message1.getIdentifier(), message3.getIdentifier());
-        assertNotEquals(message2.getIdentifier(), message3.getIdentifier());
+    @Override
+    protected <P> CommandMessage buildMessage(@Nullable P payload) {
+        return new GenericCommandMessage(new MessageType(ObjectUtils.nullSafeTypeOf(payload)), payload);
     }
 
     @Test
-    void withMetaData() {
-        Object payload = new Object();
-        Map<String, Object> metaDataMap = Collections.singletonMap("key", "value");
-        MetaData metaData = MetaData.from(metaDataMap);
-        GenericCommandMessage<Object> message = new GenericCommandMessage<>(payload, metaData);
-        GenericCommandMessage<Object> message1 = message.withMetaData(MetaData.emptyInstance());
-        GenericCommandMessage<Object> message2 = message.withMetaData(
-                MetaData.from(Collections.singletonMap("key", (Object) "otherValue")));
+    void toStringIsAsExpected() {
+        String actual = new GenericCommandMessage(
+                TEST_TYPE, "MyPayload", Metadata.with("key", "value").and("key2", "13"), "routingKey", 42
+        ).toString();
 
-        assertEquals(0, message1.getMetaData().size());
-        assertEquals(1, message2.getMetaData().size());
-    }
-
-    @Test
-    void andMetaData() {
-        Object payload = new Object();
-        Map<String, Object> metaDataMap = Collections.singletonMap("key", "value");
-        MetaData metaData = MetaData.from(metaDataMap);
-        GenericCommandMessage<Object> message = new GenericCommandMessage<>(payload, metaData);
-        GenericCommandMessage<Object> message1 = message.andMetaData(MetaData.emptyInstance());
-        GenericCommandMessage<Object> message2 = message.andMetaData(
-                MetaData.from(Collections.singletonMap("key", (Object) "otherValue")));
-
-        assertEquals(1, message1.getMetaData().size());
-        assertEquals("value", message1.getMetaData().get("key"));
-        assertEquals(1, message2.getMetaData().size());
-        assertEquals("otherValue", message2.getMetaData().get("key"));
-    }
-
-    @Test
-    void testToString() {
-        String actual = GenericCommandMessage.asCommandMessage("MyPayload").andMetaData(MetaData.with("key", "value").and("key2", 13)).toString();
-        assertTrue(actual.startsWith("GenericCommandMessage{payload={MyPayload}, metadata={"), "Wrong output: " + actual);
+        assertTrue(actual.startsWith("GenericCommandMessage{type={message#0.0.1}, payload={MyPayload}, metadata={"),
+                   "Wrong output: " + actual);
         assertTrue(actual.contains("'key'->'value'"), "Wrong output: " + actual);
         assertTrue(actual.contains("'key2'->'13'"), "Wrong output: " + actual);
-        assertTrue(actual.endsWith("', commandName='java.lang.String'}"), "Wrong output: " + actual);
-        assertEquals(173, actual.length(), "Wrong output: " + actual);
-    }
-
-    @Test
-    void asCommandMessageWrapsPayload() {
-        String expectedPayload = "some-payload";
-
-        CommandMessage<Object> result = asCommandMessage(expectedPayload);
-
-        assertEquals(expectedPayload, result.getPayload());
-        assertTrue(result.getMetaData().isEmpty());
-        assertNotNull(result.getIdentifier());
-        assertEquals(String.class, result.getPayloadType());
-        assertEquals(String.class.getName(), result.getCommandName());
-    }
-
-    @Test
-    void asCommandMessageReturnsCommandMessageAsIs() {
-        CommandMessage<String> expected = new GenericCommandMessage<>("some-payload", MetaData.with("key", "value"));
-
-        CommandMessage<Object> result = asCommandMessage(expected);
-
-        assertEquals(expected, result);
-    }
-
-    @Test
-    void asCommandMessageRetrievesPayloadAndMetaDataFromMessageImplementations() {
-        String expectedPayload = "some-payload";
-        MetaData expectedMetaData = MetaData.with("key", "value");
-
-        String testIdentifier = "some-identifier";
-        Message<String> testMessage =
-                new GenericMessage<>(testIdentifier, expectedPayload, expectedMetaData);
-
-        CommandMessage<Object> result = asCommandMessage(testMessage);
-
-        assertEquals(expectedPayload, result.getPayload());
-        assertEquals(expectedMetaData, result.getMetaData());
-        assertNotEquals(testIdentifier, result.getIdentifier());
-        assertEquals(String.class, result.getPayloadType());
-        assertEquals(String.class.getName(), result.getCommandName());
+        assertTrue(actual.contains(", routingKey='routingKey'"), "Wrong output: " + actual);
+        assertTrue(actual.contains(", priority='42'"), "Wrong output: " + actual);
+        assertEquals(203, actual.length(), "Wrong output: " + actual);
     }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,7 +25,9 @@ import io.micrometer.core.instrument.simple.SimpleConfig;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.axonframework.common.AxonConfigurationException;
 import org.axonframework.eventhandling.EventMessage;
+import org.axonframework.eventhandling.GenericEventMessage;
 import org.axonframework.messaging.Message;
+import org.axonframework.messaging.MessageType;
 import org.axonframework.monitoring.MessageMonitor;
 import org.junit.jupiter.api.*;
 
@@ -37,7 +39,6 @@ import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
 import static java.util.Objects.requireNonNull;
-import static org.axonframework.eventhandling.GenericEventMessage.asEventMessage;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -67,11 +68,11 @@ class MessageTimerMonitorTest {
     void messagesWithoutTags() {
         MessageTimerMonitor testSubject = testSubjectBuilder.build();
 
-        EventMessage<Object> foo = asEventMessage(1);
-        EventMessage<Object> bar = asEventMessage("bar");
-        EventMessage<Object> baz = asEventMessage("baz");
+        EventMessage foo = asEventMessage(1);
+        EventMessage bar = asEventMessage("bar");
+        EventMessage baz = asEventMessage("baz");
 
-        Map<? super Message<?>, MessageMonitor.MonitorCallback> callbacks =
+        Map<? super Message, MessageMonitor.MonitorCallback> callbacks =
                 testSubject.onMessagesIngested(Arrays.asList(foo, bar, baz));
 
         mockedClock.addSeconds(1);
@@ -93,14 +94,14 @@ class MessageTimerMonitorTest {
     @Test
     void messagesWithPayloadTypeAsCustomTag() {
         MessageTimerMonitor testSubject = testSubjectBuilder.tagsBuilder(
-                message -> Tags.of(TagsUtil.PAYLOAD_TYPE_TAG, message.getPayloadType().getSimpleName())
+                message -> Tags.of(TagsUtil.PAYLOAD_TYPE_TAG, message.payloadType().getSimpleName())
         ).build();
 
-        EventMessage<Object> foo = asEventMessage(1);
-        EventMessage<Object> bar = asEventMessage("bar");
-        EventMessage<Object> baz = asEventMessage("baz");
+        EventMessage foo = asEventMessage(1);
+        EventMessage bar = asEventMessage("bar");
+        EventMessage baz = asEventMessage("baz");
 
-        Map<? super Message<?>, MessageMonitor.MonitorCallback> callbacks =
+        Map<? super Message, MessageMonitor.MonitorCallback> callbacks =
                 testSubject.onMessagesIngested(Arrays.asList(foo, bar, baz));
 
         mockedClock.addSeconds(1);
@@ -146,17 +147,17 @@ class MessageTimerMonitorTest {
     @Test
     void messagesWithMetadataAsCustomTag() {
         MessageTimerMonitor testSubject = testSubjectBuilder.tagsBuilder(
-                message -> Tags.of("myMetaData", message.getMetaData().get("myMetadataKey").toString())
+                message -> Tags.of("myMetadata", message.metadata().get("myMetadataKey").toString())
         ).build();
 
-        EventMessage<Object> foo = asEventMessage("foo").withMetaData(Collections.singletonMap("myMetadataKey",
+        EventMessage foo = asEventMessage("foo").withMetadata(Collections.singletonMap("myMetadataKey",
                                                                                                "myMetadataValue1"));
-        EventMessage<Object> bar = asEventMessage("bar").withMetaData(Collections.singletonMap("myMetadataKey",
+        EventMessage bar = asEventMessage("bar").withMetadata(Collections.singletonMap("myMetadataKey",
                                                                                                "myMetadataValue2"));
-        EventMessage<Object> baz = asEventMessage("baz").withMetaData(Collections.singletonMap("myMetadataKey",
+        EventMessage baz = asEventMessage("baz").withMetadata(Collections.singletonMap("myMetadataKey",
                                                                                                "myMetadataValue2"));
 
-        Map<? super Message<?>, MessageMonitor.MonitorCallback> callbacks =
+        Map<? super Message, MessageMonitor.MonitorCallback> callbacks =
                 testSubject.onMessagesIngested(Arrays.asList(foo, bar, baz));
 
         mockedClock.addSeconds(1);
@@ -176,26 +177,26 @@ class MessageTimerMonitorTest {
         assertEquals(2, ignoredTimer.size(), 0);
 
         assertTrue(all.stream()
-                      .filter(timer -> Objects.equals(timer.getId().getTag("myMetaData"), "myMetadataValue1"))
+                      .filter(timer -> Objects.equals(timer.getId().getTag("myMetadata"), "myMetadataValue1"))
                       .allMatch(timer -> timer.totalTime(TimeUnit.SECONDS) == 1));
         assertTrue(all.stream()
-                      .filter(timer -> Objects.equals(timer.getId().getTag("myMetaData"), "myMetadataValue2"))
+                      .filter(timer -> Objects.equals(timer.getId().getTag("myMetadata"), "myMetadataValue2"))
                       .allMatch(timer -> (timer.totalTime(TimeUnit.SECONDS) == 2 && timer.max(TimeUnit.SECONDS) == 1)));
 
         assertTrue(successTimer.stream()
-                               .filter(timer -> Objects.equals(timer.getId().getTag("myMetaData"), "myMetadataValue1"))
+                               .filter(timer -> Objects.equals(timer.getId().getTag("myMetadata"), "myMetadataValue1"))
                                .allMatch(timer -> timer.totalTime(TimeUnit.SECONDS) == 1));
 
         assertTrue(successTimer.stream()
-                               .filter(timer -> Objects.equals(timer.getId().getTag("myMetaData"), "myMetadataValue2"))
+                               .filter(timer -> Objects.equals(timer.getId().getTag("myMetadata"), "myMetadataValue2"))
                                .allMatch(timer -> timer.totalTime(TimeUnit.SECONDS) == 0));
 
         assertTrue(failureTimer.stream()
-                               .filter(timer -> Objects.equals(timer.getId().getTag("myMetaData"), "myMetadataValue1"))
+                               .filter(timer -> Objects.equals(timer.getId().getTag("myMetadata"), "myMetadataValue1"))
                                .allMatch(timer -> timer.totalTime(TimeUnit.SECONDS) == 0));
 
         assertTrue(failureTimer.stream()
-                               .filter(timer -> Objects.equals(timer.getId().getTag("myMetaData"), "myMetadataValue2"))
+                               .filter(timer -> Objects.equals(timer.getId().getTag("myMetadata"), "myMetadataValue2"))
                                .allMatch(timer -> timer.totalTime(TimeUnit.SECONDS) == 1));
     }
 
@@ -206,9 +207,9 @@ class MessageTimerMonitorTest {
                         timerBuilder -> timerBuilder.publishPercentiles(0.5, 0.75, 0.95)
                 ).build();
 
-        EventMessage<Object> testEvent = asEventMessage(1);
+        EventMessage testEvent = asEventMessage(1);
 
-        Map<? super Message<?>, MessageMonitor.MonitorCallback> result =
+        Map<? super Message, MessageMonitor.MonitorCallback> result =
                 customTimerTestSubject.onMessagesIngested(Collections.singletonList(testEvent));
 
         mockedClock.addSeconds(1);
@@ -280,5 +281,9 @@ class MessageTimerMonitorTest {
     void buildWithNullTimerCustomizationThrowsAxonConfigurationException() {
         MessageTimerMonitor.Builder testSubject = MessageTimerMonitor.builder();
         assertThrows(AxonConfigurationException.class, () -> testSubject.timerCustomization(null));
+    }
+
+    private static EventMessage asEventMessage(Object payload) {
+        return new GenericEventMessage(new MessageType("event"), payload);
     }
 }

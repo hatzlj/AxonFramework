@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2023. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,17 +16,19 @@
 
 package org.axonframework.spring.eventhandling.tokenstore.jpa;
 
-import org.axonframework.common.legacyjpa.EntityManagerProvider;
-import org.axonframework.common.legacyjpa.SimpleEntityManagerProvider;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
+import org.axonframework.common.jpa.EntityManagerProvider;
+import org.axonframework.common.jpa.SimpleEntityManagerProvider;
 import org.axonframework.common.transaction.Transaction;
 import org.axonframework.common.transaction.TransactionManager;
-import org.axonframework.eventhandling.tokenstore.jpa.TokenEntry;
-import org.axonframework.eventhandling.tokenstore.legacyjpa.JpaTokenStore;
-import org.axonframework.serialization.TestSerializer;
+import org.axonframework.eventhandling.processors.streaming.token.store.jpa.JpaTokenStore;
+import org.axonframework.eventhandling.processors.streaming.token.store.jpa.TokenEntry;
+import org.axonframework.serialization.json.JacksonSerializer;
 import org.hibernate.dialect.HSQLDialect;
 import org.hibernate.jpa.HibernatePersistenceProvider;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.extension.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
@@ -43,12 +45,16 @@ import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.DefaultTransactionDefinition;
 
-import javax.persistence.EntityManager;
-import javax.persistence.PersistenceContext;
 import java.time.Duration;
 import java.util.Collections;
-import java.util.concurrent.*;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
+import static org.axonframework.common.FutureUtils.joinAndUnwrap;
 import static org.junit.jupiter.api.Assertions.*;
 
 @ContextConfiguration
@@ -73,12 +79,13 @@ class JpaTokenStoreTest {
     @Transactional
     @Test
     void stealingFromOtherThreadFailsWithRowLock() throws Exception {
-        jpaTokenStore.initializeTokenSegments("processor", 1);
+
+         joinAndUnwrap(jpaTokenStore.initializeTokenSegments("processor", 1, null, null));
 
         ExecutorService executor1 = Executors.newSingleThreadExecutor();
         CountDownLatch cdl = new CountDownLatch(1);
         try {
-            jpaTokenStore.fetchToken("processor", 0);
+            jpaTokenStore.fetchToken("processor", 0, null);
             Future<?> result = executor1.submit(() -> {
 
                 DefaultTransactionDefinition txDef = new DefaultTransactionDefinition();
@@ -86,7 +93,7 @@ class JpaTokenStoreTest {
                 TransactionStatus tx = transactionManager.getTransaction(txDef);
                 cdl.countDown();
                 try {
-                    stealingJpaTokenStore.fetchToken("processor", 0);
+                    joinAndUnwrap(stealingJpaTokenStore.fetchToken("processor", 0, null));
                 } finally {
                     transactionManager.rollback(tx);
                 }
@@ -123,7 +130,7 @@ class JpaTokenStoreTest {
             sessionFactory.setJpaPropertyMap(Collections.singletonMap("hibernate.hbm2ddl.auto", "create-drop"));
             sessionFactory.setJpaPropertyMap(Collections.singletonMap("hibernate.show_sql", "false"));
             sessionFactory.setJpaPropertyMap(Collections.singletonMap("hibernate.connection.url",
-                                                                      "jdbc:hsqldb:mem:testdb"));
+                    "jdbc:hsqldb:mem:testdb"));
             return sessionFactory;
         }
 
@@ -135,20 +142,20 @@ class JpaTokenStoreTest {
         @Bean
         public JpaTokenStore jpaTokenStore(EntityManagerProvider entityManagerProvider) {
             return JpaTokenStore.builder()
-                                .entityManagerProvider(entityManagerProvider)
-                                .serializer(TestSerializer.XSTREAM.getSerializer())
-                                .nodeId("local")
-                                .build();
+                    .entityManagerProvider(entityManagerProvider)
+                    .serializer(JacksonSerializer.defaultSerializer())
+                    .nodeId("local")
+                    .build();
         }
 
         @Bean
         public JpaTokenStore stealingJpaTokenStore(EntityManagerProvider entityManagerProvider) {
             return JpaTokenStore.builder()
-                                .entityManagerProvider(entityManagerProvider)
-                                .serializer(TestSerializer.XSTREAM.getSerializer())
-                                .claimTimeout(Duration.ofSeconds(-1))
-                                .nodeId("stealing")
-                                .build();
+                    .entityManagerProvider(entityManagerProvider)
+                    .serializer(JacksonSerializer.defaultSerializer())
+                    .claimTimeout(Duration.ofSeconds(-1))
+                    .nodeId("stealing")
+                    .build();
         }
 
         @Bean

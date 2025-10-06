@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,397 +15,237 @@
  */
 package org.axonframework.queryhandling;
 
-import org.axonframework.messaging.MessageDispatchInterceptorSupport;
-import org.axonframework.messaging.responsetypes.ResponseType;
-import org.axonframework.messaging.responsetypes.ResponseTypes;
+import jakarta.annotation.Nonnull;
+import jakarta.annotation.Nullable;
+import org.axonframework.common.infra.DescribableComponent;
+import org.axonframework.messaging.Message;
+import org.axonframework.messaging.unitofwork.ProcessingContext;
 import org.reactivestreams.Publisher;
 import reactor.util.concurrent.Queues;
 
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
-import java.util.stream.Stream;
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
-
-import static org.axonframework.queryhandling.QueryMessage.queryName;
 
 /**
- * Interface towards the Query Handling components of an application. This interface provides a friendlier API toward
- * the query bus.
+ * Interface towards the Query Handling components of an application.
+ * <p>
+ * This interface provides a friendlier API toward the {@link QueryBus}.
  *
- * @author Marc Gathier
  * @author Allard Buijze
- * @author Steven van Beelen
+ * @author Marc Gathier
  * @author Milan Savic
- * @since 3.1
+ * @author Steven van Beelen
+ * @since 3.1.0
  */
-public interface QueryGateway extends MessageDispatchInterceptorSupport<QueryMessage<?, ?>> {
+public interface QueryGateway extends DescribableComponent {
 
     /**
-     * Sends given {@code query} over the {@link org.axonframework.queryhandling.QueryBus}, expecting a response with
-     * the given {@code responseType} from a single source. The query name will be derived from the provided {@code
-     * query}. Execution may be asynchronous, depending on the QueryBus implementation.
+     * Sends given {@code query} over the {@link QueryBus}, expecting a single response with the given
+     * {@code responseType} from a single source.
+     * <p>
+     * Execution may be asynchronous, depending on the {@code QueryBus} implementation.
+     * <p>
+     * The given {@code query} is wrapped as the payload of the {@link QueryMessage} that is eventually posted on the
+     * {@code QueryBus}, unless the {@code query} already implements {@link Message}. In that case, a
+     * {@code QueryMessage} is constructed from that message's payload and {@link org.axonframework.messaging.Metadata}.
+     * The {@link QueryMessage#responseType()} will <b>at all times</b> be a
+     * {@link org.axonframework.messaging.responsetypes.InstanceResponseType}.
      *
-     * @param query        The {@code query} to be sent
-     * @param responseType A {@link java.lang.Class} describing the desired response type
-     * @param <R>          The response class contained in the given {@code responseType}
-     * @param <Q>          The query class
-     * @return A {@link java.util.concurrent.CompletableFuture} containing the query result as dictated by the given
-     * {@code responseType}
+     * @param query        The {@code query} to be sent.
+     * @param responseType A {@code Class} describing the desired response type.
+     * @param context      The processing context, if any, to dispatch the given {@code query} in.
+     * @param <R>          The generic type of the expected response.
+     * @return A {@code CompletableFuture} containing a single query response of type {@code responseType}.
      */
-    default <R, Q> CompletableFuture<R> query(@Nonnull Q query, @Nonnull Class<R> responseType) {
-        return query(queryName(query), query, responseType);
-    }
+    @Nonnull
+    <R> CompletableFuture<R> query(@Nonnull Object query,
+                                   @Nonnull Class<R> responseType,
+                                   @Nullable ProcessingContext context);
 
     /**
-     * Sends given {@code query} over the {@link org.axonframework.queryhandling.QueryBus}, expecting a response with
-     * the given {@code responseType} from a single source. Execution may be asynchronous, depending on the QueryBus
-     * implementation.
+     * Sends given {@code query} over the {@link QueryBus}, expecting multiple responses in the form of
+     * {@code responseType} from a single source.
+     * <p>
+     * Execution may be asynchronous, depending on the {@code QueryBus} implementation.
+     * <p>
+     * The given {@code query} is wrapped as the payload of the {@link QueryMessage} that is eventually posted on the
+     * {@code QueryBus}, unless the {@code query} already implements {@link Message}. In that case, a
+     * {@code QueryMessage} is constructed from that message's payload and {@link org.axonframework.messaging.Metadata}.
+     * The {@link QueryMessage#responseType()} will <b>at all times</b> be a
+     * {@link org.axonframework.messaging.responsetypes.MultipleInstancesResponseType}.
      *
-     * @param queryName    A {@link java.lang.String} describing the query to be executed
-     * @param query        The {@code query} to be sent
-     * @param responseType The {@link ResponseType} used for this query
-     * @param <R>          The response class contained in the given {@code responseType}
-     * @param <Q>          The query class
-     * @return A {@link java.util.concurrent.CompletableFuture} containing the query result as dictated by the given
-     * {@code responseType}
+     * @param query        The {@code query} to be sent.
+     * @param responseType A {@code Class} describing the desired response type.
+     * @param context      The processing context, if any, to dispatch the given {@code query} in.
+     * @param <R>          The generic type of the expected response(s).
+     * @return A {@code CompletableFuture} containing a list of query responses of type {@code responseType}.
      */
-    default <R, Q> CompletableFuture<R> query(@Nonnull String queryName, @Nonnull Q query,
-                                              @Nonnull Class<R> responseType) {
-        return query(queryName, query, ResponseTypes.instanceOf(responseType));
-    }
+    @Nonnull
+    <R> CompletableFuture<List<R>> queryMany(@Nonnull Object query,
+                                             @Nonnull Class<R> responseType,
+                                             @Nullable ProcessingContext context);
 
     /**
-     * Sends given {@code query} over the {@link org.axonframework.queryhandling.QueryBus}, expecting a response in the
-     * form of {@code responseType} from a single source. The query name will be derived from the provided {@code
-     * query}. Execution may be asynchronous, depending on the QueryBus implementation.
-     *
-     * @param query        The {@code query} to be sent
-     * @param responseType The {@link ResponseType} used for this query
-     * @param <R>          The response class contained in the given {@code responseType}
-     * @param <Q>          The query class
-     * @return A {@link java.util.concurrent.CompletableFuture} containing the query result as dictated by the given
-     * {@code responseType}
-     */
-    default <R, Q> CompletableFuture<R> query(@Nonnull Q query, @Nonnull ResponseType<R> responseType) {
-        return query(queryName(query), query, responseType);
-    }
-
-    /**
-     * Sends given {@code query} over the {@link org.axonframework.queryhandling.QueryBus}, expecting a response in the
-     * form of {@code responseType} from a single source. Execution may be asynchronous, depending on the QueryBus
-     * implementation.
-     *
-     * @param queryName    A {@link java.lang.String} describing the query to be executed
-     * @param query        The {@code query} to be sent
-     * @param responseType The {@link ResponseType} used for this query
-     * @param <R>          The response class contained in the given {@code responseType}
-     * @param <Q>          The query class
-     * @return A {@link java.util.concurrent.CompletableFuture} containing the query result as dictated by the given
-     * {@code responseType}
-     */
-    <R, Q> CompletableFuture<R> query(@Nonnull String queryName, @Nonnull Q query,
-                                      @Nonnull ResponseType<R> responseType);
-
-    /**
-     * Sends given {@code query} over the {@link org.axonframework.queryhandling.QueryBus}, expecting a response
-     * as {@link org.reactivestreams.Publisher} of {@code responseType}.
-     * Query is sent once {@link org.reactivestreams.Publisher} is subscribed to.
-     * The Streaming query allows a client to stream large result sets.
-     *
-     * Usage of this method requires
-     * <a href="https://projectreactor.io/">Project Reactor</a>
+     * Sends given {@code query} over the {@link QueryBus}, expecting a response as a
+     * {@link org.reactivestreams.Publisher} of {@code responseType}.
+     * <p>
+     * The {@code query} is sent once the {@code Publisher} is subscribed to. The streaming query allows a client to
+     * stream large result sets. Usage of this method requires <a href="https://projectreactor.io/">Project Reactor</a>
      * on the class path.
+     * <p>
+     * The given {@code query} is wrapped as the payload of the {@link StreamingQueryMessage} that is eventually posted
+     * on the {@code QueryBus}, unless the {@code query} already implements {@link Message}. In that case, a
+     * {@code StreamingQueryMessage} is constructed from that message's payload and
+     * {@link org.axonframework.messaging.Metadata}. The {@link QueryMessage#responseType()} will <b>at all times</b> be
+     * a {@link org.axonframework.messaging.responsetypes.PublisherResponseType}.
+     * <p>
+     * {@link org.reactivestreams.Publisher} is used for backwards compatibility reason, for clients that don't have
+     * Project Reactor on class path. Check <a href="https://docs.axoniq.io/reference-guide/extensions/reactor">Reactor
+     * Extension</a> for native Flux type and more. Use {@code Flux.from(publisher)} to convert to Flux stream.
      *
-     * {@link org.reactivestreams.Publisher} is used for backwards compatibility reason,
-     * for clients that don't have Project Reactor on class path.
-     * Check <a href="https://docs.axoniq.io/reference-guide/extensions/reactor">Reactor Extension</a>
-     * for native Flux type and more.
-     *
-     * Use {@code Flux.from(publisher)} to convert to Flux stream.
-     *
-     * @param query        The {@code query} to be sent
-     * @param responseType A {@link java.lang.Class} describing the desired response type
-     * @param <R>          The response class contained in the given {@code responseType}
-     * @param <Q>          The query class
-     * @return A {@link org.reactivestreams.Publisher} streaming the results as dictated by the given
-     * {@code responseType}
-     */
-    default <R, Q> Publisher<R> streamingQuery(Q query, Class<R> responseType) {
-        return streamingQuery(queryName(query), query, responseType);
-    }
-
-    /**
-     * Sends given {@code query} over the {@link org.axonframework.queryhandling.QueryBus}, expecting a response
-     * as {@link org.reactivestreams.Publisher} of {@code responseType}.
-     * Query is sent once {@link org.reactivestreams.Publisher} is subscribed to.
-     * The Streaming query allows a client to stream large result sets.
-     *
-     * Usage of this method requires
-     * <a href="https://projectreactor.io/">Project Reactor</a>
-     * on the class path.
-     *
-     * {@link org.reactivestreams.Publisher} is used for backwards compatibility reason,
-     * for clients that don't have Project Reactor on class path.
-     * Check <a href="https://docs.axoniq.io/reference-guide/extensions/reactor">Reactor Extension</a>
-     * for native Flux type and more.
-     *
-     * Use {@code Flux.from(publisher)} to convert to Flux stream.
-     *
-     * @param queryName    A {@link java.lang.String} describing the query to be executed
-     * @param query        The {@code query} to be sent
-     * @param responseType A {@link java.lang.Class} describing the desired response type
-     * @param <R>          The response class contained in the given {@code responseType}
-     * @param <Q>          The query class
+     * @param query        The {@code query} to be sent.
+     * @param responseType A {@link java.lang.Class} describing the desired response type.
+     * @param context      The processing context, if any, to dispatch the given {@code query} in.
+     * @param <R>          The generic type of the expected response(s).
      * @return A {@link org.reactivestreams.Publisher} streaming the results as dictated by the given
      * {@code responseType}.
      */
-    <R, Q> Publisher<R> streamingQuery(String queryName, Q query,  Class<R> responseType);
+    @Nonnull
+    <R> Publisher<R> streamingQuery(@Nonnull Object query,
+                                    @Nonnull Class<R> responseType,
+                                    @Nullable ProcessingContext context);
 
     /**
-     * Sends given {@code query} over the {@link org.axonframework.queryhandling.QueryBus}, expecting a response in the
-     * form of {@code responseType} from several sources. The stream is completed when a {@code timeout} occurs or when
-     * all results are received. The query name will be derived from the provided {@code query}. Execution may be
-     * asynchronous, depending on the QueryBus implementation.
+     * Sends given {@code query} over the {@link QueryBus} as a subscription query, combining the initial result and
+     * emitted updates as a {@link Publisher} of the given {@code responseType}.
+     * <p>
+     * The {@code query} is sent once the {@code Publisher} is subscribed to. Furthermore, updates are received at the
+     * moment the query is sent, and until it is cancelled by the caller or closed by the emitting side.
+     * <p>
+     * The given {@code query} is wrapped as the payload of the {@link SubscriptionQueryMessage} that is eventually
+     * posted on the {@code QueryBus}, unless the {@code query} already implements {@link Message}. In that case, a
+     * {@code SubscriptionQueryMessage} is constructed from that message's payload and
+     * {@link org.axonframework.messaging.Metadata}.
+     * <p>
+     * Note that any {@code null} results, on the initial result or the updates, wil lbe filtered out by the gateway. If
+     * you require the {@code null} to be returned for the initial and update results, we suggest using the
+     * {@code QueryBus} instead.
      *
-     * @param query        The {@code query} to be sent
-     * @param responseType The {@link ResponseType} used for this query
-     * @param timeout      A timeout of {@code long} for the query
-     * @param timeUnit     The selected {@link java.util.concurrent.TimeUnit} for the given {@code timeout}
-     * @param <R>          The response class contained in the given {@code responseType}
-     * @param <Q>          The query class
-     * @return A stream of results.
+     * @param query        The {@code query} to be sent.
+     * @param responseType The response type returned by this query as the initial result and the updates.
+     * @param context      The processing context, if any, to dispatch the given {@code query} in.context
+     * @param <R>          The type of all the responses.
+     * @return A {@link org.reactivestreams.Publisher} streaming the results as dictated by the given
+     * {@code responseType}.
      */
-    default <R, Q> Stream<R> scatterGather(@Nonnull Q query, @Nonnull ResponseType<R> responseType, long timeout,
-                                           @Nonnull TimeUnit timeUnit) {
-        return scatterGather(queryName(query), query, responseType, timeout, timeUnit);
+    @Nonnull
+    default <R> Publisher<R> subscriptionQuery(@Nonnull Object query,
+                                               @Nonnull Class<R> responseType,
+                                               @Nullable ProcessingContext context) {
+        return subscriptionQuery(query, responseType, context, Queues.SMALL_BUFFER_SIZE);
     }
 
     /**
-     * Sends given {@code query} over the {@link org.axonframework.queryhandling.QueryBus}, expecting a response in the
-     * form of {@code responseType} from several sources. The stream is completed when a {@code timeout} occurs or when
-     * all results are received. Execution may be asynchronous, depending on the QueryBus implementation.
-     *
-     * @param queryName    A {@link java.lang.String} describing the query to be executed
-     * @param query        The {@code query} to be sent
-     * @param responseType The {@link ResponseType} used for this query
-     * @param timeout      A timeout of {@code long} for the query
-     * @param timeUnit     The selected {@link java.util.concurrent.TimeUnit} for the given {@code timeout}
-     * @param <R>          The response class contained in the given {@code responseType}
-     * @param <Q>          The query class
-     * @return A stream of results.
-     */
-    <R, Q> Stream<R> scatterGather(@Nonnull String queryName, @Nonnull Q query, @Nonnull ResponseType<R> responseType,
-                                   long timeout,
-                                   @Nonnull TimeUnit timeUnit);
-
-    /**
-     * Sends given {@code query} over the {@link QueryBus} and returns result containing initial response and
-     * incremental updates (received at the moment the query is sent, until it is cancelled by the caller or closed by
-     * the emitting side).
+     * Sends given {@code query} over the {@link QueryBus} as a subscription query, combining the initial result and
+     * emitted updates as a {@link Publisher} of the given {@code responseType}.
      * <p>
-     * <b>Note</b>: Any {@code null} results, on the initial result or the updates, wil lbe filtered out by the
-     * QueryGateway. If you require the {@code null} to be returned for the initial and update results, we suggest using
-     * the {@link QueryBus} instead.
+     * The {@code query} is sent once the {@code Publisher} is subscribed to. Furthermore, updates are received at the
+     * moment the query is sent, and until it is cancelled by the caller or closed by the emitting side.
+     * <p>
+     * The given {@code query} is wrapped as the payload of the {@link SubscriptionQueryMessage} that is eventually
+     * posted on the {@code QueryBus}, unless the {@code query} already implements {@link Message}. In that case, a
+     * {@code SubscriptionQueryMessage} is constructed from that message's payload and
+     * {@link org.axonframework.messaging.Metadata}.
+     * <p>
+     * Note that any {@code null} results, on the initial result or the updates, wil lbe filtered out by the gateway. If
+     * you require the {@code null} to be returned for the initial and update results, we suggest using the
+     * {@code QueryBus} instead.
      *
-     * @param query               The {@code query} to be sent
-     * @param initialResponseType The initial response type used for this query
-     * @param updateResponseType  The update response type used for this query
-     * @param <Q>                 The type of the query
-     * @param <I>                 The type of the initial response
-     * @param <U>                 The type of the incremental update
-     * @return registration which can be used to cancel receiving updates
-     * @see QueryBus#subscriptionQuery(SubscriptionQueryMessage)
-     * @see QueryBus#subscriptionQuery(SubscriptionQueryMessage, int)
+     * @param query            The {@code query} to be sent.
+     * @param responseType     The response type returned by this query as the initial result and the updates.
+     * @param context          The processing context, if any, to dispatch the given {@code query} in.context
+     * @param updateBufferSize The size of buffer which accumulates updates before a subscription to the {@code Flux} is
+     *                         made.
+     * @param <R>              The type of all the responses.
+     * @return A {@link org.reactivestreams.Publisher} streaming the results as dictated by the given
+     * {@code responseType}.
      */
-    default <Q, I, U> SubscriptionQueryResult<I, U> subscriptionQuery(@Nonnull Q query,
-                                                                      @Nonnull Class<I> initialResponseType,
-                                                                      @Nonnull Class<U> updateResponseType) {
-        return subscriptionQuery(queryName(query), query, initialResponseType, updateResponseType);
+    @Nonnull
+    default <R> Publisher<R> subscriptionQuery(@Nonnull Object query,
+                                               @Nonnull Class<R> responseType,
+                                               @Nullable ProcessingContext context,
+                                               int updateBufferSize) {
+        SubscriptionQueryResponse<R, R> result =
+                subscriptionQuery(query, responseType, responseType, context, updateBufferSize);
+        return result.initialResult().concatWith(result.updates());
     }
 
     /**
-     * Sends given {@code query} over the {@link QueryBus} and returns result containing initial response and
-     * incremental updates (received at the moment the query is sent, until it is cancelled by the caller or closed by
-     * the emitting side).
+     * Sends given {@code query} over the {@link QueryBus} and returns a {@link SubscriptionQueryResponse} containing an
+     * {@link SubscriptionQueryResponse#initialResult() initial result Flux} and incremental
+     * {@link SubscriptionQueryResponse#updates() updates}.
      * <p>
-     * <b>Note</b>: Any {@code null} results, on the initial result or the updates, wil lbe filtered out by the
-     * QueryGateway. If you require the {@code null} to be returned for the initial and update results, we suggest using
-     * the {@link QueryBus} instead.
+     * The {@code query} is sent once the initial result is subscribed to. Furthermore, updates are received at the
+     * moment the query is sent, and until it is cancelled by the caller or closed by the emitting side.
+     * <p>
+     * The given {@code query} is wrapped as the payload of the {@link SubscriptionQueryMessage} that is eventually
+     * posted on the {@code QueryBus}, unless the {@code query} already implements {@link Message}. In that case, a
+     * {@code QueryMessage} is constructed from that message's payload and
+     * {@link org.axonframework.messaging.Metadata}.
+     * <p>
+     * Note that any {@code null} results, on the initial result or the updates, wil lbe filtered out by the gateway. If
+     * you require the {@code null} to be returned for the initial and update results, we suggest using the
+     * {@code QueryBus} instead.
      *
-     * @param queryName           A {@link String} describing query to be executed
-     * @param query               The {@code query} to be sent
-     * @param initialResponseType The initial response type used for this query
-     * @param updateResponseType  The update response type used for this query
-     * @param <Q>                 The type of the query
-     * @param <I>                 The type of the initial response
-     * @param <U>                 The type of the incremental update
-     * @return registration which can be used to cancel receiving updates
-     * @see QueryBus#subscriptionQuery(SubscriptionQueryMessage)
-     * @see QueryBus#subscriptionQuery(SubscriptionQueryMessage, int)
+     * @param query               The {@code query} to be sent.
+     * @param initialResponseType The initial response type used for this query.
+     * @param updateResponseType  The update response type used for this query.
+     * @param context             The processing context, if any, to dispatch the given {@code query} in.
+     * @param <I>                 The type of the initial response.
+     * @param <U>                 The type of the incremental update.
+     * @return Registration which can be used to cancel receiving updates.
+     * @see QueryBus#subscriptionQuery(SubscriptionQueryMessage, ProcessingContext, int)
      */
-    default <Q, I, U> SubscriptionQueryResult<I, U> subscriptionQuery(@Nonnull String queryName,
-                                                                      @Nonnull Q query,
-                                                                      @Nonnull Class<I> initialResponseType,
-                                                                      @Nonnull Class<U> updateResponseType) {
-        return subscriptionQuery(queryName,
-                                 query,
-                                 ResponseTypes.instanceOf(initialResponseType),
-                                 ResponseTypes.instanceOf(updateResponseType));
+    @Nonnull
+    default <I, U> SubscriptionQueryResponse<I, U> subscriptionQuery(@Nonnull Object query,
+                                                                     @Nonnull Class<I> initialResponseType,
+                                                                     @Nonnull Class<U> updateResponseType,
+                                                                     @Nullable ProcessingContext context) {
+        return subscriptionQuery(query, initialResponseType, updateResponseType, context, Queues.SMALL_BUFFER_SIZE);
     }
 
     /**
-     * Sends given {@code query} over the {@link QueryBus} and returns result containing initial response and
-     * incremental updates (received at the moment the query is sent, until it is cancelled by the caller or closed by
-     * the emitting side).
+     * Sends given {@code query} over the {@link QueryBus} and returns a {@link SubscriptionQueryResponse} containing an
+     * {@link SubscriptionQueryResponse#initialResult() initial result Flux} and incremental
+     * {@link SubscriptionQueryResponse#updates() updates}.
      * <p>
-     * <b>Note</b>: Any {@code null} results, on the initial result or the updates, wil lbe filtered out by the
-     * QueryGateway. If you require the {@code null} to be returned for the initial and update results, we suggest using
-     * the {@link QueryBus} instead.
-     *
-     * @param query               The {@code query} to be sent
-     * @param initialResponseType The initial response type used for this query
-     * @param updateResponseType  The update response type used for this query
-     * @param <Q>                 The type of the query
-     * @param <I>                 The type of the initial response
-     * @param <U>                 The type of the incremental update
-     * @return registration which can be used to cancel receiving updates
-     * @see QueryBus#subscriptionQuery(SubscriptionQueryMessage)
-     * @see QueryBus#subscriptionQuery(SubscriptionQueryMessage, int)
-     */
-    default <Q, I, U> SubscriptionQueryResult<I, U> subscriptionQuery(@Nonnull Q query,
-                                                                      @Nonnull ResponseType<I> initialResponseType,
-                                                                      @Nonnull ResponseType<U> updateResponseType) {
-        return subscriptionQuery(queryName(query),
-                                 query,
-                                 initialResponseType,
-                                 updateResponseType);
-    }
-
-    /**
-     * Sends given {@code query} over the {@link QueryBus} and returns result containing initial response and
-     * incremental updates (received at the moment the query is sent, until it is cancelled by the caller or closed by
-     * the emitting side).
+     * The {@code query} is sent once the initial result is subscribed to. Furthermore, updates are received at the
+     * moment the query is sent, and until it is cancelled by the caller or closed by the emitting side.
      * <p>
-     * <b>Note</b>: Any {@code null} results, on the initial result or the updates, wil lbe filtered out by the
-     * QueryGateway. If you require the {@code null} to be returned for the initial and update results, we suggest using
-     * the {@link QueryBus} instead.
-     *
-     * @param queryName           A {@link String} describing query to be executed
-     * @param query               The {@code query} to be sent
-     * @param initialResponseType The initial response type used for this query
-     * @param updateResponseType  The update response type used for this query
-     * @param backpressure        The backpressure mechanism to deal with producing of incremental updates
-     * @param <Q>                 The type of the query
-     * @param <I>                 The type of the initial response
-     * @param <U>                 The type of the incremental update
-     * @return registration which can be used to cancel receiving updates
-     * @see QueryBus#subscriptionQuery(SubscriptionQueryMessage)
-     * @see QueryBus#subscriptionQuery(SubscriptionQueryMessage, SubscriptionQueryBackpressure, int)
-     * @deprecated in favour of using {{@link #subscriptionQuery(String, Object, ResponseType, ResponseType)}}.
-     * To set a backpressure strategy, use one of the {@code onBackpressure..} operators on the updates flux directly.
-     * Example: {@code result.updates().onBackpressureBuffer(100)}
-     */
-    @Deprecated
-    default <Q, I, U> SubscriptionQueryResult<I, U> subscriptionQuery(@Nonnull String queryName,
-                                                                      @Nonnull Q query,
-                                                                      @Nonnull ResponseType<I> initialResponseType,
-                                                                      @Nonnull ResponseType<U> updateResponseType,
-                                                                      @Nullable SubscriptionQueryBackpressure backpressure) {
-        return subscriptionQuery(queryName,
-                                 query,
-                                 initialResponseType,
-                                 updateResponseType,
-                                 backpressure,
-                                 Queues.SMALL_BUFFER_SIZE);
-    }
-
-    /**
-     * Sends given {@code query} over the {@link QueryBus} and returns result containing initial response and
-     * incremental updates (received at the moment the query is sent, until it is cancelled by the caller or closed by
-     * the emitting side).
+     * The given {@code query} is wrapped as the payload of the {@link SubscriptionQueryMessage} that is eventually
+     * posted on the {@code QueryBus}, unless the {@code query} already implements {@link Message}. In that case, a
+     * {@code QueryMessage} is constructed from that message's payload and
+     * {@link org.axonframework.messaging.Metadata}.
      * <p>
-     * <b>Note</b>: Any {@code null} results, on the initial result or the updates, will be filtered out by the
-     * QueryGateway. If you require the {@code null} to be returned for the initial and update results, we suggest using
-     * the {@link QueryBus} instead.
+     * Note that any {@code null} results, on the initial result or the updates, wil lbe filtered out by the gateway. If
+     * you require the {@code null} to be returned for the initial and update results, we suggest using the
+     * {@code QueryBus} instead.
      *
-     * @param queryName           a {@link String} describing query to be executed
-     * @param query               the {@code query} to be sent
-     * @param initialResponseType the initial response type used for this query
-     * @param updateResponseType  the update response type used for this query
-     * @param <Q>                 the type of the query
-     * @param <I>                 the type of the initial response
-     * @param <U>                 the type of the incremental update
-     * @return registration which can be used to cancel receiving updates
-     * @see QueryBus#subscriptionQuery(SubscriptionQueryMessage)
-     * @see QueryBus#subscriptionQuery(SubscriptionQueryMessage, int)
+     * @param query               The {@code query} to be sent.
+     * @param initialResponseType The initial response type used for this query.
+     * @param updateResponseType  The update response type used for this query.
+     * @param context             The processing context, if any, to dispatch the given {@code query} in.
+     * @param updateBufferSize    The size of buffer which accumulates updates before a subscription to the {@code Flux}
+     *                            is made.
+     * @param <I>                 The type of the initial response.
+     * @param <U>                 The type of the incremental update.
+     * @return Registration which can be used to cancel receiving updates.
+     * @see QueryBus#subscriptionQuery(SubscriptionQueryMessage, ProcessingContext, int)
      */
-    default <Q, I, U> SubscriptionQueryResult<I, U> subscriptionQuery(@Nonnull String queryName,
-                                                                      @Nonnull Q query,
-                                                                      @Nonnull ResponseType<I> initialResponseType,
-                                                                      @Nonnull ResponseType<U> updateResponseType) {
-        return subscriptionQuery(queryName, query, initialResponseType, updateResponseType, Queues.SMALL_BUFFER_SIZE);
-    }
-
-    /**
-     * Sends given {@code query} over the {@link QueryBus} and returns result containing initial response and
-     * incremental updates (received at the moment the query is sent, until it is cancelled by the caller or closed by
-     * the emitting side).
-     * <p>
-     * <b>Note</b>: Any {@code null} results, on the initial result or the updates, wil lbe filtered out by the
-     * QueryGateway. If you require the {@code null} to be returned for the initial and update results, we suggest using
-     * the {@link QueryBus} instead.
-     *
-     * @param queryName           A {@link String} describing query to be executed
-     * @param query               The {@code query} to be sent
-     * @param initialResponseType The initial response type used for this query
-     * @param updateResponseType  The update response type used for this query
-     * @param backpressure        The backpressure mechanism to deal with producing of incremental updates
-     * @param updateBufferSize    The size of buffer which accumulates updates before subscription to the {@code} flux
-     *                            is made
-     * @param <Q>                 The type of the query
-     * @param <I>                 The type of the initial response
-     * @param <U>                 The type of the incremental update
-     * @return registration which can be used to cancel receiving updates
-     * @see QueryBus#subscriptionQuery(SubscriptionQueryMessage)
-     * @see QueryBus#subscriptionQuery(SubscriptionQueryMessage, SubscriptionQueryBackpressure, int)
-     * @deprecated in favour of using {{@link #subscriptionQuery(String, Object, ResponseType, ResponseType, int)}}.
-     * To set a backpressure strategy, use one of the {@code onBackpressure..} operators on the updates flux directly.
-     * Example: {@code result.updates().onBackpressureBuffer(100)}
-     */
-    @Deprecated
-    <Q, I, U> SubscriptionQueryResult<I, U> subscriptionQuery(@Nonnull String queryName,
-                                                              @Nonnull Q query,
-                                                              @Nonnull ResponseType<I> initialResponseType,
-                                                              @Nonnull ResponseType<U> updateResponseType,
-                                                              @Nullable SubscriptionQueryBackpressure backpressure,
-                                                              int updateBufferSize);
-
-    /**
-     * Sends given {@code query} over the {@link QueryBus} and returns result containing initial response and
-     * incremental updates (received at the moment the query is sent, until it is cancelled by the caller or closed by
-     * the emitting side).
-     * <p>
-     * <b>Note</b>: Any {@code null} results, on the initial result or the updates, wil lbe filtered out by the
-     * QueryGateway. If you require the {@code null} to be returned for the initial and update results, we suggest using
-     * the {@link QueryBus} instead.
-     *
-     * @param queryName           a {@link String} describing query to be executed
-     * @param query               the {@code query} to be sent
-     * @param initialResponseType the initial response type used for this query
-     * @param updateResponseType  the update response type used for this query
-     * @param updateBufferSize    the size of buffer which accumulates updates before subscription to the flux
-     *                            is made
-     * @param <Q>                 the type of the query
-     * @param <I>                 the type of the initial response
-     * @param <U>                 the type of the incremental update
-     * @return registration which can be used to cancel receiving updates
-     * @see QueryBus#subscriptionQuery(SubscriptionQueryMessage)
-     * @see QueryBus#subscriptionQuery(SubscriptionQueryMessage, int)
-     */
-    <Q, I, U> SubscriptionQueryResult<I, U> subscriptionQuery(@Nonnull String queryName,
-                                                              @Nonnull Q query,
-                                                              @Nonnull ResponseType<I> initialResponseType,
-                                                              @Nonnull ResponseType<U> updateResponseType,
-                                                              int updateBufferSize);
+    @Nonnull
+    <I, U> SubscriptionQueryResponse<I, U> subscriptionQuery(@Nonnull Object query,
+                                                             @Nonnull Class<I> initialResponseType,
+                                                             @Nonnull Class<U> updateResponseType,
+                                                             @Nullable ProcessingContext context,
+                                                             int updateBufferSize);
 }

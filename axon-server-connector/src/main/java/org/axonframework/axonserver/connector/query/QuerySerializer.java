@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2023. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,7 +24,7 @@ import io.axoniq.axonserver.grpc.query.QueryResponse;
 import org.axonframework.axonserver.connector.AxonServerConfiguration;
 import org.axonframework.axonserver.connector.ErrorCode;
 import org.axonframework.axonserver.connector.util.ExceptionSerializer;
-import org.axonframework.axonserver.connector.util.GrpcMetaDataConverter;
+import org.axonframework.axonserver.connector.util.GrpcMetadataConverter;
 import org.axonframework.axonserver.connector.util.GrpcMetadataSerializer;
 import org.axonframework.axonserver.connector.util.GrpcObjectSerializer;
 import org.axonframework.axonserver.connector.util.GrpcPayloadSerializer;
@@ -81,7 +81,7 @@ public class QuerySerializer {
 
         this.payloadSerializer = new GrpcPayloadSerializer(messageSerializer);
         this.exceptionDetailsSerializer = new GrpcObjectSerializer<>(messageSerializer);
-        this.metadataSerializer = new GrpcMetadataSerializer(new GrpcMetaDataConverter(this.messageSerializer));
+        this.metadataSerializer = new GrpcMetadataSerializer(new GrpcMetadataConverter(this.messageSerializer));
         this.responseTypeSerializer = new GrpcObjectSerializer<>(serializer);
     }
 
@@ -98,7 +98,7 @@ public class QuerySerializer {
      * @param <R>          a generic specifying the response type of the given {@code queryMessage}
      * @return a {@link QueryRequest} based on the provided {@code queryMessage}
      */
-    public <Q, R> QueryRequest serializeRequest(QueryMessage<Q, R> queryMessage,
+    public <Q, R> QueryRequest serializeRequest(QueryMessage queryMessage,
                                                 int nrResults,
                                                 long timeout,
                                                 int priority) {
@@ -119,22 +119,22 @@ public class QuerySerializer {
      * @param <R>          a generic specifying the response type of the given {@code queryMessage}
      * @return a {@link QueryRequest} based on the provided {@code queryMessage}
      */
-    public <Q, R> QueryRequest serializeRequest(QueryMessage<Q, R> queryMessage, int nrResults, long timeout,
+    public <Q, R> QueryRequest serializeRequest(QueryMessage queryMessage, int nrResults, long timeout,
                                                 int priority, boolean stream) {
         return QueryRequest.newBuilder()
                            .setTimestamp(System.currentTimeMillis())
-                           .setMessageIdentifier(queryMessage.getIdentifier())
-                           .setQuery(queryMessage.getQueryName())
+                           .setMessageIdentifier(queryMessage.identifier())
+                           .setQuery(queryMessage.type().name())
                            .setClientId(configuration.getClientId())
                            .setComponentName(configuration.getComponentName())
-                           .setResponseType(responseTypeSerializer.apply(queryMessage.getResponseType()
+                           .setResponseType(responseTypeSerializer.apply(queryMessage.responseType()
                                                                                      .forSerialization()))
                            .setPayload(payloadSerializer.apply(queryMessage))
                            .addProcessingInstructions(nrOfResults(nrResults))
                            .addProcessingInstructions(timeout(timeout))
                            .addProcessingInstructions(priority(priority))
                            .addProcessingInstructions(supportsStreaming(stream))
-                           .putAllMetaData(metadataSerializer.apply(queryMessage.getMetaData()))
+                           .putAllMetaData(metadataSerializer.apply(queryMessage.metadata()))
                            .build();
     }
 
@@ -177,7 +177,7 @@ public class QuerySerializer {
      * @param requestMessageId a {@link String} specifying the identity of the original request message
      * @return a {@link QueryResponse} based on the provided {@code queryResponse}
      */
-    public QueryResponse serializeResponse(QueryResponseMessage<?> queryResponse, String requestMessageId) {
+    public QueryResponse serializeResponse(QueryResponseMessage queryResponse, String requestMessageId) {
         QueryResponse.Builder responseBuilder = QueryResponse.newBuilder();
 
         if (queryResponse.isExceptional()) {
@@ -197,8 +197,8 @@ public class QuerySerializer {
             responseBuilder.setPayload(payloadSerializer.apply(queryResponse));
         }
 
-        return responseBuilder.putAllMetaData(metadataSerializer.apply(queryResponse.getMetaData()))
-                              .setMessageIdentifier(queryResponse.getIdentifier())
+        return responseBuilder.putAllMetaData(metadataSerializer.apply(queryResponse.metadata()))
+                              .setMessageIdentifier(queryResponse.identifier())
                               .setRequestIdentifier(requestMessageId)
                               .build();
     }
@@ -211,7 +211,7 @@ public class QuerySerializer {
      * @param <R>          a generic specifying the response type of the {@link QueryMessage} to convert to
      * @return a {@link QueryMessage} based on the provided {@code queryRequest}
      */
-    public <Q, R> QueryMessage<Q, R> deserializeRequest(QueryRequest queryRequest) {
+    public <Q, R> QueryMessage deserializeRequest(QueryRequest queryRequest) {
         return new GrpcBackedQueryMessage<>(queryRequest, messageSerializer, serializer);
     }
 
@@ -222,7 +222,7 @@ public class QuerySerializer {
      * @param <R>           a generic specifying the type of the {@link QueryResponseMessage} to convert to
      * @return a {@link QueryResponseMessage} based on the provided {@code queryResponse}
      */
-    public <R> QueryResponseMessage<R> deserializeResponse(QueryResponse queryResponse,
+    public <R> QueryResponseMessage deserializeResponse(QueryResponse queryResponse,
                                                            ResponseType<R> expectedResponseType) {
         return new ConvertingResponseMessage<>(
                 expectedResponseType, new GrpcBackedResponseMessage<>(queryResponse, messageSerializer)
@@ -236,7 +236,7 @@ public class QuerySerializer {
      * @param queryResponse a {@link QueryResponse} to convert into a {@link QueryResponseMessage}
      * @return a {@link QueryResponseMessage} based on the provided {@code queryResponse}
      */
-    public QueryResponseMessage<?> deserializeResponse(QueryResponse queryResponse) {
+    public QueryResponseMessage deserializeResponse(QueryResponse queryResponse) {
         return new GrpcBackedResponseMessage<>(queryResponse, messageSerializer);
     }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2023. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 package org.axonframework.common.jpa;
 
 import jakarta.persistence.EntityManager;
+import org.axonframework.common.annotations.Internal;
 
 /**
  * Provides components with an EntityManager to access the persistence mechanism. Depending on the application
@@ -29,6 +30,7 @@ import jakarta.persistence.EntityManager;
  * @author Allard Buijze
  * @since 1.3
  */
+@Internal
 public interface EntityManagerProvider {
 
     /**

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2023. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 package org.axonframework.queryhandling;
 
+import org.axonframework.queryhandling.tracing.DefaultQueryUpdateEmitterSpanFactory;
 import org.axonframework.tracing.IntermediateSpanFactoryTest;
 import org.axonframework.tracing.SpanFactory;
 import org.axonframework.tracing.TestSpanFactory;
@@ -27,7 +28,7 @@ class DefaultQueryUpdateEmitterSpanFactoryTest extends
 
     @Test
     void createsDefaultScheduleSpan() {
-        SubscriptionQueryUpdateMessage<?> message = Mockito.mock(SubscriptionQueryUpdateMessage.class);
+        SubscriptionQueryUpdateMessage message = Mockito.mock(SubscriptionQueryUpdateMessage.class);
         test(spanFactory -> spanFactory.createUpdateScheduleEmitSpan(message),
              expectedSpan("QueryUpdateEmitter.scheduleQueryUpdateMessage", TestSpanFactory.TestSpanType.INTERNAL)
                      .withMessage(message)
@@ -36,7 +37,7 @@ class DefaultQueryUpdateEmitterSpanFactoryTest extends
 
     @Test
     void createsDefaultEmitSpan() {
-        SubscriptionQueryUpdateMessage<?> message = Mockito.mock(SubscriptionQueryUpdateMessage.class);
+        SubscriptionQueryUpdateMessage message = Mockito.mock(SubscriptionQueryUpdateMessage.class);
         test(spanFactory -> spanFactory.createUpdateEmitSpan(message),
              expectedSpan("QueryUpdateEmitter.emitQueryUpdateMessage", TestSpanFactory.TestSpanType.DISPATCH)
                      .withMessage(message)
@@ -45,7 +46,7 @@ class DefaultQueryUpdateEmitterSpanFactoryTest extends
 
     @Test
     void propagateContext() {
-        SubscriptionQueryUpdateMessage<?> message = Mockito.mock(SubscriptionQueryUpdateMessage.class);
+        SubscriptionQueryUpdateMessage message = Mockito.mock(SubscriptionQueryUpdateMessage.class);
         testContextPropagation(message, DefaultQueryUpdateEmitterSpanFactory::propagateContext);
     }
 

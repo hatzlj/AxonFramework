@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2025. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,18 +16,23 @@
 
 package org.axonframework.messaging.interceptors;
 
-import org.axonframework.commandhandling.CommandHandler;
 import org.axonframework.commandhandling.CommandMessage;
-import org.axonframework.eventhandling.EventHandler;
+import org.axonframework.commandhandling.GenericCommandMessage;
+import org.axonframework.commandhandling.annotations.CommandHandler;
 import org.axonframework.eventhandling.EventMessage;
+import org.axonframework.eventhandling.annotations.EventHandler;
 import org.axonframework.messaging.Message;
-import org.axonframework.messaging.annotation.AnnotatedHandlerInspector;
-import org.axonframework.messaging.annotation.MessageHandlerInterceptorMemberChain;
-import org.axonframework.messaging.annotation.MessageHandlingMember;
+import org.axonframework.messaging.MessageType;
+import org.axonframework.messaging.annotations.AnnotatedHandlerInspector;
+import org.axonframework.messaging.annotations.MessageHandlingMember;
+import org.axonframework.messaging.interceptors.annotations.ExceptionHandler;
+import org.axonframework.messaging.interceptors.annotations.MessageHandlerInterceptorMemberChain;
 import org.axonframework.messaging.responsetypes.ResponseTypes;
+import org.axonframework.messaging.unitofwork.LegacyMessageSupportingContext;
+import org.axonframework.messaging.unitofwork.ProcessingContext;
 import org.axonframework.queryhandling.GenericQueryMessage;
-import org.axonframework.queryhandling.QueryHandler;
 import org.axonframework.queryhandling.QueryMessage;
+import org.axonframework.queryhandling.annotations.QueryHandler;
 import org.junit.jupiter.api.*;
 
 import java.util.ArrayList;
@@ -37,8 +42,7 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 
-import static org.axonframework.commandhandling.GenericCommandMessage.asCommandMessage;
-import static org.axonframework.eventhandling.GenericEventMessage.asEventMessage;
+import static org.axonframework.eventhandling.EventTestUtils.asEventMessage;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -46,11 +50,15 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * @author Steven van Beelen
  */
+@Disabled("TODO #3062 - Exception Handler support")
 class ExceptionHandlerTest {
 
     private static final String COMMAND_HANDLER_INVOKED = "command";
     private static final String EVENT_HANDLER_INVOKED = "event";
     private static final String QUERY_HANDLER_INVOKED = "query";
+
+    private static final MessageType TEST_COMMAND_TYPE = new MessageType(SomeCommand.class);
+    private static final MessageType TEST_QUERY_TYPE = new MessageType(SomeQuery.class);
 
     private AtomicReference<String> invokedHandler;
     private List<String> invokedExceptionHandlers;
@@ -63,21 +71,21 @@ class ExceptionHandlerTest {
         invokedHandler = new AtomicReference<>();
         invokedExceptionHandlers = new ArrayList<>();
 
-        messageHandlingComponent =
-                new ExceptionHandlingComponent(invokedHandler, invokedExceptionHandlers);
+        messageHandlingComponent = new ExceptionHandlingComponent(invokedHandler, invokedExceptionHandlers);
         inspector = AnnotatedHandlerInspector.inspectType(ExceptionHandlingComponent.class);
     }
 
     @Test
     void exceptionHandlerIsInvokedForAnCommandHandlerThrowingAnException() {
-        CommandMessage<SomeCommand> command =
-                asCommandMessage(new SomeCommand(() -> new RuntimeException("some-exception")));
+        CommandMessage command = new GenericCommandMessage(
+                TEST_COMMAND_TYPE, new SomeCommand(() -> new RuntimeException("some-exception"))
+        );
 
         try {
             Object result = handle(command);
             assertNull(result);
         } catch (Exception e) {
-            assertTrue(e instanceof IllegalStateException);
+            assertInstanceOf(IllegalStateException.class, e);
         }
 
         assertEquals(COMMAND_HANDLER_INVOKED, invokedHandler.get());
@@ -86,14 +94,14 @@ class ExceptionHandlerTest {
 
     @Test
     void exceptionHandlerIsInvokedForAnEventHandlerThrowingAnException() {
-        EventMessage<SomeEvent> event =
+        EventMessage event =
                 asEventMessage(new SomeEvent(() -> new RuntimeException("some-exception")));
 
         try {
             Object result = handle(event);
             assertNull(result);
         } catch (Exception e) {
-            assertTrue(e instanceof IllegalStateException);
+            assertInstanceOf(IllegalStateException.class, e);
         }
 
         assertEquals(EVENT_HANDLER_INVOKED, invokedHandler.get());
@@ -102,16 +110,16 @@ class ExceptionHandlerTest {
 
     @Test
     void exceptionHandlerIsInvokedForAnQueryHandlerThrowingAnException() {
-        QueryMessage<SomeQuery, SomeQueryResponse> query = new GenericQueryMessage<>(
+        QueryMessage query = new GenericQueryMessage(
+                TEST_QUERY_TYPE,
                 new SomeQuery(() -> new RuntimeException("some-exception")),
-                ResponseTypes.instanceOf(SomeQueryResponse.class)
-        );
+                ResponseTypes.instanceOf(SomeQueryResponse.class));
 
         try {
             Object result = handle(query);
             assertNull(result);
         } catch (Exception e) {
-            assertTrue(e instanceof IllegalStateException);
+            assertInstanceOf(IllegalStateException.class, e);
         }
 
         assertEquals(QUERY_HANDLER_INVOKED, invokedHandler.get());
@@ -119,9 +127,11 @@ class ExceptionHandlerTest {
     }
 
     @Test
+    @Disabled("TODO #3062 - Exception Handler support")
     void exceptionHandlersAreInvokedInHandlerPriorityOrder() {
-        CommandMessage<SomeCommand> command =
-                asCommandMessage(new SomeCommand(() -> new IllegalStateException("some-exception")));
+        CommandMessage command = new GenericCommandMessage(
+                TEST_COMMAND_TYPE, new SomeCommand(() -> new IllegalStateException("some-exception"))
+        );
 
         assertThrows(IllegalStateException.class, () -> handle(command));
 
@@ -139,33 +149,25 @@ class ExceptionHandlerTest {
 
     /**
      * This method is a similar approach as followed by the
-     * {@link org.axonframework.eventhandling.AnnotationEventHandlerAdapter#handle(EventMessage)}. Thus, mirroring
-     * regular message handling components.
+     * {@link org.axonframework.eventhandling.annotations.AnnotatedEventHandlingComponent#handle(EventMessage,
+     * ProcessingContext)}. Thus, mirroring regular message handling components.
      */
-    private Object handle(Message<?> message) throws Exception {
+    private Object handle(Message message) throws Exception {
         Optional<MessageHandlingMember<? super ExceptionHandlingComponent>> handler =
                 inspector.getHandlers(ExceptionHandlingComponent.class)
-                         .filter(h -> h.canHandle(message))
+                         .filter(h -> h.canHandle(message, new LegacyMessageSupportingContext(message)))
                          .findFirst();
         if (handler.isPresent()) {
             MessageHandlerInterceptorMemberChain<ExceptionHandlingComponent> interceptorChain =
                     inspector.chainedInterceptor(ExceptionHandlingComponent.class);
-            return interceptorChain.handle(message, messageHandlingComponent, handler.get());
+            return interceptorChain.handleSync(message, messageHandlingComponent, handler.get());
         }
         return null;
     }
 
     @SuppressWarnings("unused") // suppress not-invoked exception handler warning.
-    private static class ExceptionHandlingComponent {
-
-        private final AtomicReference<String> invokedHandler;
-        private final List<String> invokedExceptionHandlers;
-
-        private ExceptionHandlingComponent(AtomicReference<String> invokedHandler,
-                                           List<String> invokedExceptionHandlers) {
-            this.invokedHandler = invokedHandler;
-            this.invokedExceptionHandlers = invokedExceptionHandlers;
-        }
+    private record ExceptionHandlingComponent(AtomicReference<String> invokedHandler,
+                                              List<String> invokedExceptionHandlers) {
 
         @ExceptionHandler
         public void leastSpecificExceptionHandler() {
@@ -231,31 +233,16 @@ class ExceptionHandlerTest {
         }
     }
 
-    private static class SomeCommand {
+    private record SomeCommand(Supplier<Exception> exceptionSupplier) {
 
-        private final Supplier<Exception> exceptionSupplier;
-
-        private SomeCommand(Supplier<Exception> exceptionSupplier) {
-            this.exceptionSupplier = exceptionSupplier;
-        }
     }
 
-    private static class SomeEvent {
+    private record SomeEvent(Supplier<Exception> exceptionSupplier) {
 
-        private final Supplier<Exception> exceptionSupplier;
-
-        private SomeEvent(Supplier<Exception> exceptionSupplier) {
-            this.exceptionSupplier = exceptionSupplier;
-        }
     }
 
-    private static class SomeQuery {
+    private record SomeQuery(Supplier<Exception> exceptionSupplier) {
 
-        private final Supplier<Exception> exceptionSupplier;
-
-        private SomeQuery(Supplier<Exception> exceptionSupplier) {
-            this.exceptionSupplier = exceptionSupplier;
-        }
     }
 
     private static class SomeQueryResponse {

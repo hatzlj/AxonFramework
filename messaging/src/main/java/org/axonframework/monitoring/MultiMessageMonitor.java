@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2022. Axon Framework
+ * Copyright (c) 2010-2023. Axon Framework
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,7 +23,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
-import javax.annotation.Nonnull;
+import jakarta.annotation.Nonnull;
 
 /**
  * Delegates messages and callbacks to the given list of message monitors
@@ -31,7 +31,7 @@ import javax.annotation.Nonnull;
  * @author Marijn van Zelst
  * @since 3.0
  */
-public class MultiMessageMonitor<T extends Message<?>> implements MessageMonitor<T> {
+public class MultiMessageMonitor<T extends Message> implements MessageMonitor<T> {
 
     private final List<MessageMonitor<? super T>> messageMonitors;
 

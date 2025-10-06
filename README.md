@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://getbootstrap.com/">
+  <a href="https://www.axoniq.io/products/axon-framework">
     <img src="https://www.axoniq.io/hubfs/axon-framework.svg" alt="Axon Framework logo" width="200" height="200">
   </a>
 </p>
@@ -18,10 +18,8 @@
   ·
   <a href="https://github.com/AxonFramework/AxonFramework/issues">Feature / Bug Request</a>
 
+
 </p>
-
-
-
 
 # Axon Framework
 [![Maven Central](https://maven-badges.herokuapp.com/maven-central/org.axonframework/axon/badge.svg)](https://maven-badges.herokuapp.com/maven-central/org.axonframework/axon)
@@ -58,12 +56,11 @@ Furthermore, below are several other helpful resources:
 * The [quickstart page](https://docs.axoniq.io/reference-guide/getting-started/quick-start) of the documentation provides a simplified entry point into the framework with the [quickstart project](https://download.axoniq.io/quickstart/AxonQuickStart.zip).
 * We have our very own [academy](https://academy.axoniq.io/)! 
   The introductory courses are free, followed by more in-depth (paid) courses.
-* When ready, you can quickly and easily start your very own Axon Framework based application at https://start.axoniq.io/. 
-  Note that this solution is only feasible if you want to stick to the Spring ecosphere.
 * The [reference guide](https://docs.axoniq.io) explains all of the components maintained within Axon Framework's products.
 * If the guide doesn't help, our [forum](https://discuss.axoniq.io/) provides a place to ask questions you have during development.
 * The [hotel demo](https://github.com/AxonIQ/hotel-demo) shows a fleshed-out example of using Axon Framework.
 * The [code samples repository](https://github.com/AxonIQ/code-samples) contains more in-depth samples you can benefit from.
+* You can [Ask Axon Guru](https://gurubase.io/g/axon-framework), it is an Axon-focused AI to answer your questions.
 
 ## Receiving help
 
@@ -99,3 +96,16 @@ When filing a feature or enhancement:
 * If you have any thoughts on where to plug this into the framework, that would be very helpful too.
 * Lastly, we value contributions to the framework highly. 
   So please provide a Pull Request as well!
+
+## Update Checker and Anonymous Usage Data Collection
+
+The update checker is a new feature included in the upcoming Axon Framework 5, which ensures the security of the Axon
+Framework application and its modules and provides useful information to its maintainers.
+
+It does so by retrieving available updates and known vulnerabilities for the Axon modules in use. Furthermore, to
+detect updates and vulnerabilities, the checker collects anonymous data about your Axon Framework installation. This
+data is sent to AxonIQ and includes technical information about your environment.
+
+Please read [this page](https://docs.axoniq.io/axon-framework-update-checker/) of our documentation for more details on
+why we collect this information, what you get in return, how to opt out, and why this matters. Please check out
+our [Privacy Policy](https://www.axoniq.io/privacy-policy) for any privacy concerns.
